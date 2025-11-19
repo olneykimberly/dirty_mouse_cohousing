@@ -468,7 +468,7 @@ form <- ~ group  + sex + collection_date + RIN
 C = canCorPairs(form, sorted_info)
 # Plot correlation matrix
 plotCorrMatrix( C )
-saveToPDF(paste0("../results_", projectID, "/both_sexes/variance/CCA_with_project.pdf"), width = 8, height = 8)
+saveToPDF(paste0("../results_", projectID, "/both_sexes/variance/CCA.pdf"), width = 5, height = 5)
 
 rm(form, C)
 ```
@@ -587,7 +587,7 @@ pheatmap::pheatmap(df,
                    cluster_rows = FALSE,
                    display_numbers = round(df, digits = 0),
                    fontsize_number = 12,
-                   number_color = ifelse(df > 300, "white", "black"),
+                   number_color = ifelse(df > 400, "white", "black"),
                    angle_col = "0",
                    breaks = c(seq(0, 500, length.out = length(rev(natparks.pals("WindCave"))))))
 dev.off()
@@ -597,7 +597,7 @@ dev.off()
 ```{r DGE_check, eval=FALSE}
 DEG_check <- topTable(
   veBayesFit, 
-  coef = "CH_vs_Clean,  
+  coef = "CH_vs_Clean",  
   n = Inf, 
   p.value = 1,
   lfc = 0, 
@@ -925,43 +925,43 @@ for (i in allComparisons) {
 # DEGs by FDRq <= 0.05
 ```{r}
 # sex as a covariate
-LBDvsControl_up <- subset(LBDvsControl, logFC > 0.0 & adj.P.Val <= 0.05)
-LBDvsControl_down <- subset(LBDvsControl, logFC < -0.0 & adj.P.Val <= 0.05)
-ADvsControl_up <- subset(ADvsControl, logFC > 0.0 & adj.P.Val <= 0.05)
-ADvsControl_down <- subset(ADvsControl, logFC < -0.0 & adj.P.Val <= 0.05)
+CH_vs_Clean_up <- subset(CH_vs_Clean, logFC > 0.0 & adj.P.Val <= 0.05)
+CH_vs_Clean_down <- subset(CH_vs_Clean, logFC < -0.0 & adj.P.Val <= 0.05)
+CH_vs_Bedding_up <- subset(CH_vs_Bedding, logFC > 0.0 & adj.P.Val <= 0.05)
+CH_vs_Bedding_down <- subset(CH_vs_Bedding, logFC < -0.0 & adj.P.Val <= 0.05)
 ```
 
 # Upset of DEGs
 ```{r}
-list_input <- list("LBD down-regulated" = LBDvsControl_down$gene_name,
-                   "LBD up-regulated" = LBDvsControl_up$gene_name,
-                   "AD down-regulated" = ADvsControl_down$gene_name,
-                   "AD up-regulated" = ADvsControl_up$gene_name)
+list_input <- list("CH vs clean down-regulated" = CH_vs_Clean_down$gene_name,
+                   "CH vs clean up-regulated" = CH_vs_Clean_up$gene_name,
+                   "CH vs bedding down-regulated" = CH_vs_Bedding_down$gene_name,
+                   "CH vs bedding up-regulated" = CH_vs_Bedding_up$gene_name)
 data <- fromList(list_input)
 
 upset_gene <- upset(data, set_sizes = FALSE,
-      c('LBD down-regulated',
-        'AD down-regulated',
-        'LBD up-regulated',
-        'AD up-regulated'),
+      c('CH vs clean down-regulated',
+        'CH vs bedding down-regulated',
+        'CH vs clean up-regulated',
+        'CH vs bedding up-regulated'),
       themes=upset_modify_themes(
         list('intersections_matrix'=theme(text=element_text(size=10),
               plot.margin = margin(0, 0, 0, 0, "cm")),
           'overall_sizes' = theme(axis.text.x = element_text(size =10), 
               plot.margin = margin(0, 0, 0, 0, "cm")))),
   queries=list(
-    upset_query(set='LBD down-regulated', fill='blue'),
-    upset_query(set='AD down-regulated', fill='blue'),
-    upset_query(set='LBD up-regulated', fill='red'),
-    upset_query(set='AD up-regulated', fill='red'),
+    upset_query(set='CH vs clean down-regulated', fill='blue'),
+    upset_query(set='CH vs bedding down-regulated', fill='blue'),
+    upset_query(set='CH vs clean up-regulated', fill='red'),
+    upset_query(set='CH vs bedding up-regulated', fill='red')
   ),
   intersections = list(
-                       c('LBD down-regulated', 'AD down-regulated'), 
-                       'LBD down-regulated',
-                       'AD down-regulated', 
-                       c('LBD up-regulated', 'AD up-regulated'), 
-                       'LBD up-regulated',
-                       'AD up-regulated'
+                       c('CH vs clean down-regulated', 'CH vs bedding down-regulated'), 
+                       'CH vs clean down-regulated',
+                       'CH vs bedding down-regulated', 
+                       c('CH vs clean up-regulated', 'CH vs bedding up-regulated'), 
+                       'CH vs clean up-regulated',
+                       'CH vs bedding up-regulated'
   ),
   base_annotations=list(
     'Intersection size'=(
@@ -994,28 +994,15 @@ upset_gene <- upset(data, set_sizes = FALSE,
 upset_gene
 
 # save
-path <- paste0("../../results/", tool, 
-               "/upset/", condition, "_all_types_FDRq0.05_logFC_0.25")
-saveToPDF(paste0(path, ".pdf"), width = 6, height = 4)
-
-upset(data, intersect = c('LBD down-regulated',
-        'AD down-regulated',
-        'PA down-regulated',
-        'LBD up-regulated',
-        'AD up-regulated',
-        'PA up-regulated'))
-
-path <- paste0("../../results/", tool,
-               "/upset/", condition, "_all_types_FDRq0.05_logFC_0.25_simple")
-saveToPDF(paste0(path, ".pdf"), width = 9, height = 6)
+path <- paste0("../results_", projectID, 
+               "/both_sexes/upset/UpSet_DEGs_q0.05")
+saveToPDF(paste0(path, ".pdf"), width = 4, height = 4)
 
 # Binary table with colnames:
 write.table(
   data,
-  paste0("../../results/",
-  tool,
-  "/upset/", condition, 
-  "_all_types_FDRq0.05_logFC_0.25_list_binary_results.txt"),
+  paste0("../results_", projectID, 
+               "/both_sexes/upset/UpSet_list_binary_results.txt"),
   sep = "\t",
   quote = FALSE
 )
