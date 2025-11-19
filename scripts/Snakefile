@@ -1,0 +1,185 @@
+import os
+
+configfile: "config.json"
+
+#Tools
+fastqc_path = "fastqc"
+bbduksh_path = "bbduk.sh"
+multiqc_path = "multiqc"
+star_path = "STAR"
+picard_path = "picard"
+bamtools_path = "bamtools"
+featureCounts_path = "featureCounts"
+kallisto_path = "kallisto"
+salmon_path = "salmon"
+
+
+rule all:
+        input:
+        	expand(config["rawQC"]+"{sample}_fq1_fastqc.html", sample = config["sample_names"]),
+        	expand(config["rawQC"]+"{sample}_fq2_fastqc.html", sample = config["sample_names"]),
+        
+        	expand(config["trimmedReads"]+"{sample}_trimmed_R1.fastq.gz", sample = config["sample_names"]),
+        	expand(config["trimmedReads"]+"{sample}_trimmed_R2.fastq.gz", sample = config["sample_names"]),
+        	
+        	expand(config["trimmedQC"]+"{sample}_trimmed_fq1_fastqc.html", sample = config["sample_names"]),
+        	expand(config["trimmedQC"]+"{sample}_trimmed_fq2_fastqc.html", sample = config["sample_names"]),
+        	
+        	expand(config["starAligned"]+"{sample}_STAR.bam", sample = config["sample_names"])
+
+        	
+#---------------------
+# Reference genome and annotation were downloaded prior to running snakemake. 
+# Ensembl refdata-gex-GRCm39-2024-A fasta
+# 	wget https://cf.10xgenomics.com/supp/cell-exp/refdata-gex-GRCm39-2024-A.tar.gz
+# STAR --runMode genomeGenerate --runThreadN 8 --genomeDir refdata-gex-GRCm39-2024-A_STARv2.7.11_150sjdb  --genomeFastaFiles /tgen_labs/jfryer/projects/references/mouse/refdata-gex-GRCm39-2024-A/fasta/genome.fa --sjdbGTFfile /tgen_labs/jfryer/projects/references/mouse/refdata-gex-GRCm39-2024-A/genes/genes.gtf --sjdbOverhang 150
+#---------------------
+#rule fastqc on raw:
+#---------------------
+rule raw_fastqc:
+	input:
+		fq1 = lambda wildcards: config[wildcards.sample]["fq_path"] + config[wildcards.sample]["fq1"] + ".fastq.gz",
+		fq2 = lambda wildcards: config[wildcards.sample]["fq_path"] + config[wildcards.sample]["fq2"] + ".fastq.gz"
+	output:
+		fq1_zip =  (config["rawQC"]+"{sample}_fq1_fastqc.zip"),
+		fq1_html = (config["rawQC"]+"{sample}_fq1_fastqc.html"),
+		fq2_zip =  (config["rawQC"]+"{sample}_fq2_fastqc.zip"),
+		fq2_html = (config["rawQC"]+"{sample}_fq2_fastqc.html")
+	params:
+		fastqc = fastqc_path,
+		fastqc_dir = (config["rawQC"]),
+		fq1_prefix = lambda wildcards: config[wildcards.sample]["fq_path"] + config[wildcards.sample]["fq1"],
+		fq2_prefix = lambda wildcards: config[wildcards.sample]["fq_path"] + config[wildcards.sample]["fq2"]
+	resources:
+	  mem_gb=64,
+	  walltime="01:30:00",
+	  threads=8
+	shell:
+		"""
+		{params.fastqc} {input.fq1};
+		{params.fastqc} {input.fq2};
+		mv {params.fq1_prefix}_fastqc.html {output.fq1_html};
+		mv {params.fq1_prefix}_fastqc.zip {output.fq1_zip};
+		mv {params.fq2_prefix}_fastqc.html {output.fq2_html};
+		mv {params.fq2_prefix}_fastqc.zip {output.fq2_zip}
+		"""
+
+#---------------------
+#rule trim fq:
+#---------------------
+rule trim_bbduk:
+	input:
+		fq1_trim = lambda wildcards: config[wildcards.sample]["fq_path"] + config[wildcards.sample]["fq1"] + ".fastq.gz",
+		fq2_trim = lambda wildcards: config[wildcards.sample]["fq_path"] + config[wildcards.sample]["fq2"] + ".fastq.gz"
+	output:
+		out_fq1 = (config["trimmedReads"]+"{sample}_trimmed_R1.fastq.gz"),
+		out_fq2 = (config["trimmedReads"]+"{sample}_trimmed_R2.fastq.gz")
+	params:
+		bbduksh = bbduksh_path
+	resources:
+	  mem_gb=64,
+	  walltime="01:30:00",
+	  threads=8
+	shell:
+		"{params.bbduksh} in1={input.fq1_trim} in2={input.fq2_trim} "
+		"out1={output.out_fq1} out2={output.out_fq2} "
+		"ref=/tgen_labs/jfryer/projects/references/adapters.fa, literal=GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG "
+		"ktrim=r k=23 mink=11 hdist=1 tpe tbo"	
+		
+# KEY
+# in1/in2 input paired end fastq files
+# out1/out2 output paired end fastq files
+# ref where adapter fasta is located
+# ktrim=r is for right-trimming (3′ adapters), once a reference kmer is matched in a read, that kmer and all the bases to the right will be trimmed, leaving only the bases to the left
+# ktrim=l is for left-trimming (5′ adapters)
+# k=23 kmer length is 23-mers
+# mink=11 will additionally look for shorter 11-mers at end of read
+# hdist=1 with a small value of mink, it is useful to independently control the hamming/edit distance
+# tpe specifies to trim both reads to the same length
+# tbo specifies to also trim adapters based on pair overlap detection using BBMerge (which does not require known adapter sequences)
+
+#---------------------
+#rule fastqc on trimmed:
+#---------------------
+rule trim_fastqc:
+	input:
+		fq1_trim = (config["trimmedReads"]+"{sample}_trimmed_R1.fastq.gz"),
+		fq2_trim = (config["trimmedReads"]+"{sample}_trimmed_R2.fastq.gz")
+	output:
+		fq1_zip =  (config["trimmedQC"]+"{sample}_trimmed_fq1_fastqc.zip"),
+		fq1_html = (config["trimmedQC"]+"{sample}_trimmed_fq1_fastqc.html"),
+		fq2_zip =  (config["trimmedQC"]+"{sample}_trimmed_fq2_fastqc.zip"),
+		fq2_html = (config["trimmedQC"]+"{sample}_trimmed_fq2_fastqc.html")
+	params:
+		fastqc = fastqc_path,
+		fastqc_dir = (config["trimmedQC"]),
+		fq1_prefix = (config["trimmedReads"]+"{sample}_trimmed_R1"),
+		fq2_prefix = (config["trimmedReads"]+"{sample}_trimmed_R2"),
+	resources:
+	  mem_gb=64,
+	  walltime="01:30:00",
+	  threads=8
+	shell:
+		"""
+		{params.fastqc} {input.fq1_trim};
+		{params.fastqc} {input.fq2_trim};
+		mv {params.fq1_prefix}_fastqc.html {output.fq1_html};
+		mv {params.fq1_prefix}_fastqc.zip {output.fq1_zip};
+		mv {params.fq2_prefix}_fastqc.html {output.fq2_html};
+		mv {params.fq2_prefix}_fastqc.zip {output.fq2_zip}
+		"""
+#---------------------
+#rule star alignment: 
+#---------------------
+rule STAR_paired:
+	input:
+		fq1_trim = (config["trimmedReads"]+"{sample}_trimmed_R1.fastq.gz"),
+		fq2_trim = (config["trimmedReads"]+"{sample}_trimmed_R2.fastq.gz")
+	output:
+		out_1 = (config["starAligned"]+"{sample}_STAR.bam")
+	threads: 8
+	params:
+		star = star_path,
+		STAR_Index = (config["star_ref_index"]),
+		STAR_GTF = (config["Mmusculus.gtf"]+".gtf"),
+	resources:
+	  mem_gb=64,
+	  runtime=250,
+	  threads=8,
+	  ntasks=8,
+	  cores=8,
+	  cpus=8
+	shell:
+		"""
+		{params.star} --runThreadN 8 --genomeDir {params.STAR_Index} --sjdbGTFfile {params.STAR_GTF} --twopassMode Basic --quantMode TranscriptomeSAM GeneCounts --readFilesCommand zcat --readFilesIn {input.fq1_trim} {input.fq2_trim} --outSAMtype BAM Unsorted --outFileNamePrefix {output.out_1};
+		mv {output.out_1}Aligned.out.bam {output.out_1}
+		"""
+
+# KEY
+#--runThreadN NumberOfThreads
+#--genomeDir specifies where indices are located
+#--sjdbGTFfile gene annotation file, used for splice aware junctions
+#--twopassMode TAR will perform the 1st pass mapping, then it will automatically extract junctions, insert them into the genome index, and, finally, re-map all reads in the 2nd mapping pass.
+#--readFilesCommand zcat for reading in compressed .gz files 
+#--readFilesIn read in pair end trimmed fastq files
+#--outSAMtype BAM Unsorted. Output will not be sorted by coordinate
+#--quantMode TranscriptomeSAM GeneCounts to get the aligned transcripts an counts the number of reads per gene id
+#--outFileNamePrefix. Naming prefix for the output bam file. 
+
+# Output 
+# SJ.out.tab contains high confidence collapsed splice junctions in tab-delimited format. Note that STAR defines the junction start/end as intronic bases, while many other software define them as exonic bases.
+
+# quantMode GeneCounts
+# column 1: gene ID
+# column 2: counts for unstranded RNA-seq
+# column 3: counts for the 1st read strand aligned with RNA (htseq-count option -s yes)
+# column 4: counts for the 2nd read strand aligned with RNA (htseq-count option -s reverse)
+
+
+# Note that STAR counts a paired-end read as one read, (unlike the samtools flagstat/idxstats, which count each mate separately). 
+#--quantMode geneCounts, can be used to get gene counts 
+#--genomeLoad LoadAndExit. Loads the star genome index into memory to be used by all star jobs. Will unload after script is done running. 
+#--sjdbOverhang specifies the length of the genomic sequence around the annotated junction to be used in constructing the splice junctions database. Ideally, this length should be equal to the ReadLength-1, where ReadLength is the length of the reads.
+#---------------------
+# End of Snakefile. Proceed to R scripts for differential expression. 
+

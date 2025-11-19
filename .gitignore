@@ -1,0 +1,8 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+scripts/.snakemake/*
+scripts/slurm*
+scripts/shiny/rsconnect/*
+scripts/slurm_profile/*
