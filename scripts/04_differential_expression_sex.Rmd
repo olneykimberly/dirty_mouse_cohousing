@@ -1,14 +1,14 @@
 ---
 title: "Differential expression - co-houseing mouse mRNA"
 author: "Kimberly Olney, PhD"
-date: "October 2025"
+date: "February 2026"
 output:
   pdf_document: default
 params:
   project: CH
 ---
 
-Compare clean, bedding, co-housed. 
+Compare clean, bedding, co-housed by sex
 
 # Set up working enivornment
 ```{r setup, include=FALSE}
@@ -82,6 +82,8 @@ all.equal(colnames(count_data), (metadata$sample)) # counts columns match the sa
 
 # Create DGE object
 ```{r DGE_object}
+# group & sex 
+metadata$group_sex <- paste0(metadata$group, metadata$sex)
 # create object
 dge <- DGEList(counts = count_data,
                samples = metadata,
@@ -90,20 +92,38 @@ dge <- DGEList(counts = count_data,
 # Inspect
 table(dge$samples$group)
 table(dge$samples$sample)
+table(dge$samples$group_sex)
+
+# Create the Female-only object
+dge_female <- dge[, dge$samples$sex == "F"]
+table(dge_female$samples$group)
+
+# Create the Male-only object
+dge_male <- dge[, dge$samples$sex == "M"]
+table(dge_male$samples$group)
 ```
 
 # Set factors and colors 
 ```{r factor_and_color_set}
-dge$samples$group <- factor(dge$samples$group, levels = c("Clean", "Bedding", "CH")) # 
+dge$samples$group <- factor(dge$samples$group, levels = c("Clean", "Bedding", "CH")) 
 condition_colors <- c("skyblue", "orange", "brown")[dge$samples$group]
 
 dge$samples$sex <- factor(dge$samples$sex, levels = c("F", "M"))
 sex_colors <- c("purple", "orange")[dge$samples$sex]
+
+# group colors
+dge_female$samples$group <- factor(dge_female$samples$group, levels = c("Clean", "Bedding", "CH")) 
+condition_colors_female <- c("skyblue", "orange", "brown")[dge_female$samples$group]
+
+dge_male$samples$group <- factor(dge_male$samples$group, levels = c("Clean", "Bedding", "CH")) 
+condition_colors_male <- c("skyblue", "orange", "brown")[dge_male$samples$group]
 ```
 
 # Raw CPM
 ```{r raw_cpm}
 lcpm <- edgeR::cpm(dge$counts, log = TRUE)
+lcpm_female <- edgeR::cpm(dge_female$counts, log = TRUE)
+lcpm_male <- edgeR::cpm(dge_male$counts, log = TRUE)
 ```
 
 # Raw MDS
@@ -111,16 +131,29 @@ lcpm <- edgeR::cpm(dge$counts, log = TRUE)
 # Condition
 par(bg = 'white')
 plotMDS(
-  lcpm,
-  top = 100,
-  labels = dge$samples$sample,
+  lcpm_female,
+  top = 500,
+  labels = dge_female$samples$sample,
   cex = 1,
   dim.plot = c(1, 2),
-  plot = TRUE,
-  col = sex_colors
+  plot = TRUE, 
+  col = condition_colors_female
 )
 title(expression('Top 500 Genes - Raw (Log'[2] ~ 'CPM)'))
-saveToPDF(paste0("results_", projectID, "/both_sexes/MDS/MDS_raw_sex.pdf"), width = 6, height = 6)
+saveToPDF(paste0("results_", projectID, "/sex_stratified/MDS/MDS_female.pdf"), width = 6, height = 6)
+
+par(bg = 'white')
+plotMDS(
+  lcpm_male,
+  top = 500,
+  labels = dge_male$samples$sample,
+  cex = 1,
+  dim.plot = c(1, 2),
+  plot = TRUE, 
+  col = condition_colors_male
+)
+title(expression('Top 500 Genes - Raw (Log'[2] ~ 'CPM)'))
+saveToPDF(paste0("results_", projectID, "/sex_stratified/MDS/MDS_male.pdf"), width = 6, height = 6)
 ```
 
 
@@ -131,6 +164,18 @@ removeMT <- dge$genes$Chr != "chrM"  # true when NOT MT
 table(removeMT) # inspect
 dge <- dge[removeMT,,keep.lib.sizes = FALSE]
 dim(dge)
+
+dim(dge_female) # inspect
+removeMT <- dge_female$genes$Chr != "chrM"  # true when NOT MT
+table(removeMT) # inspect
+dge_female <- dge_female[removeMT,,keep.lib.sizes = FALSE]
+dim(dge_female)
+
+dim(dge_male) # inspect
+removeMT <- dge_male$genes$Chr != "chrM"  # true when NOT MT
+table(removeMT) # inspect
+dge_male <- dge_male[removeMT,,keep.lib.sizes = FALSE]
+dim(dge_male)
 ```
 
 # Keep only protein coding genes 
@@ -140,6 +185,18 @@ table(dge$genes$gene_type)
 removeMT <- dge$genes$gene_type == "protein_coding"  # true when NOT MT
 dge <- dge[removeMT,,keep.lib.sizes = FALSE]
 dim(dge)
+
+dim(dge_female)
+table(dge_female$genes$gene_type)
+removeMT <- dge_female$genes$gene_type == "protein_coding"  # true when NOT MT
+dge_female <- dge_female[removeMT,,keep.lib.sizes = FALSE]
+dim(dge_female)
+
+dim(dge_male)
+table(dge_male$genes$gene_type)
+removeMT <- dge_male$genes$gene_type == "protein_coding"  # true when NOT MT
+dge_male <- dge_male[removeMT,,keep.lib.sizes = FALSE]
+dim(dge_male)
 ```
 
 # Library sizes
@@ -148,6 +205,14 @@ dim(dge)
 L <- mean(dge$samples$lib.size) * 1e-6
 M <- median(dge$samples$lib.size) * 1e-6
 c(L, M)
+
+L_female <- mean(dge_female$samples$lib.size) * 1e-6
+M_female <- median(dge_female$samples$lib.size) * 1e-6
+c(L_female, M_female)
+
+L_male <- mean(dge_male$samples$lib.size) * 1e-6
+M_male <- median(dge_male$samples$lib.size) * 1e-6
+c(L_male, M_male)
 ```
 
 # Filtering 
@@ -165,6 +230,28 @@ keep.expr <-
 dge.filtered <- dge[keep.expr, ,keep.lib.sizes = FALSE]
 dim(dge.filtered)
 table(dge.filtered$genes$gene_type)
+
+dim(dge_female)
+keep.expr <-
+  filterByExpr(
+    dge_female,
+    group = dge_female$samples$group, # by disease groups
+    min.count = M_female, # min count of 1 CPM 
+  )
+dge.filtered.female <- dge_female[keep.expr, ,keep.lib.sizes = FALSE]
+dim(dge.filtered.female)
+table(dge.filtered.female$genes$gene_type)
+
+dim(dge_male)
+keep.expr <-
+  filterByExpr(
+    dge_male,
+    group = dge_male$samples$group, # by disease groups
+    min.count = M_male, # min count of 1 CPM 
+  )
+dge.filtered.male <- dge_male[keep.expr, ,keep.lib.sizes = FALSE]
+dim(dge.filtered.male)
+table(dge.filtered.male$genes$gene_type)
 ```
 
 # TMM
@@ -175,10 +262,15 @@ into currently used statistical methods for DE analysis.
 # Now, method of trimmed mean of M-values (TMM)
 # Calculate scaling factors to convert raw library sizes into effective library sizes.
 dge.filtered.norm <- calcNormFactors(dge.filtered, method = "TMM")
+dge.filtered.norm.female <- calcNormFactors(dge.filtered.female, method = "TMM")
+dge.filtered.norm.male <- calcNormFactors(dge.filtered.male, method = "TMM")
 
 # norm factor summary
-summary(dge.filtered.norm$samples$norm.factors)
-normfactors <- (dge.filtered.norm$samples$norm.factors)
+summary(dge.filtered.norm.female$samples$norm.factors)
+normfactors <- (dge.filtered.norm.female$samples$norm.factors)
+
+summary(dge.filtered.norm.male$samples$norm.factors)
+normfactors <- (dge.filtered.norm.male$samples$norm.factors)
 ```
 
 # Gene_id to gene_name
@@ -186,9 +278,13 @@ Some of the gene_names are duplicated. Our counts matrix has rownames by gene_id
 ```{r gene_name}
 # check for duplication
 table(duplicated(dge.filtered.norm$genes$gene_name))
+table(duplicated(dge.filtered.norm.female$genes$gene_name))
+table(duplicated(dge.filtered.norm.male$genes$gene_name))
 
 # replace NA with gene_id 
 dge.filtered.norm$genes <- dge.filtered.norm$genes %>% mutate(gene_name = coalesce(gene_name,gene_id))
+dge.filtered.norm.female$genes <- dge.filtered.norm.female$genes %>% mutate(gene_name = coalesce(gene_name,gene_id))
+dge.filtered.norm.male$genes <- dge.filtered.norm.male$genes %>% mutate(gene_name = coalesce(gene_name,gene_id))
 
 # check for duplication
 table(duplicated(dge.filtered.norm$genes$gene_name))
@@ -197,253 +293,113 @@ table(duplicated(dge.filtered.norm$genes$gene_name))
 # Clean up
 ```{r cleanup}
 rm(count_data, lcpm, keep.expr, normfactors, removeMT, L, M, typeOfCount)
+rm(lcpm_female, lcpm_male, L_female, M_female, L_male, M_male, dge.filtered.female, dge.filtered.male, dge_male, dge_female)
 ```
 
 # Filtered CPM
 ```{r filtered_lcpm}
-lcpm <- edgeR::cpm(dge.filtered.norm$counts, log = TRUE)
-lcpm_df <- as.data.frame(lcpm)
-lcpm_df$gene_id <- rownames(lcpm_df)
-lcpm_gene_names <- merge(genes, lcpm_df, by = "gene_id")
-write.table(lcpm_gene_names, paste0("../results_", projectID, "/both_sexes/counts/filtered_lcpm_gene_names.txt"), sep= "\t", row.names = FALSE, quote=FALSE)
-
-cpm <- edgeR::cpm(dge.filtered.norm$counts, log = FALSE)
+cpm <- edgeR::cpm(dge.filtered.norm.female$counts, log = FALSE)
 cpm_df <- as.data.frame(cpm)
 cpm_df$gene_id <- rownames(cpm_df)
 cpm_gene_names <- merge(genes, cpm_df, by = "gene_id")
-write.table(cpm_gene_names, paste0("../results_", projectID, "/both_sexes/counts/filtered_cpm_gene_names.txt"), sep= "\t", row.names = FALSE, quote=FALSE)
+write.table(cpm_gene_names, paste0("results_", projectID, "/sex_stratified/counts/filtered_cpm_female_gene_names.txt"), sep= "\t", row.names = FALSE, quote=FALSE)
+rm(cpm_gene_names, cpm_df, cpm)
+
+cpm <- edgeR::cpm(dge.filtered.norm.male$counts, log = FALSE)
+cpm_df <- as.data.frame(cpm)
+cpm_df$gene_id <- rownames(cpm_df)
+cpm_gene_names <- merge(genes, cpm_df, by = "gene_id")
+write.table(cpm_gene_names, paste0("results_", projectID, "/sex_stratified/counts/filtered_cpm_male_gene_names.txt"), sep= "\t", row.names = FALSE, quote=FALSE)
+rm(cpm_gene_names, cpm_df, cpm)
 ```
 
 # Filtered MDS
 ```{r filtered_MDS}
+lcpm_female <- edgeR::cpm(dge.filtered.norm.female$counts, log = FALSE)
+
 # Condition
 par(bg = 'white')
 plotMDS(
-  lcpm,
+  lcpm_female,
   top = 500,
-  labels = dge.filtered.norm$samples$sample,
+  labels = dge.filtered.norm.female$samples$sample,
   cex = 1,
   dim.plot = c(1,2),
   plot = TRUE,
-  col = condition_colors
+  col = condition_colors_female
 )
 title(expression('Top 500 Genes - Filtered (Log'[2] ~ 'CPM)'))
-saveToPDF(paste0("../results_", projectID, "/both_sexes/MDS/MDS_filtered_condition.pdf"), width = 6, height = 6)
+saveToPDF(paste0("results_", projectID, "/sex_stratified/MDS/MDS_filtered_condition_female.pdf"), width = 6, height = 6)
+
+
+lcpm_male <- edgeR::cpm(dge.filtered.norm.male$counts, log = FALSE)
+# Condition
+par(bg = 'white')
+plotMDS(
+  lcpm_male,
+  top = 500,
+  labels = dge.filtered.norm.male$samples$sample,
+  cex = 1,
+  dim.plot = c(1,2),
+  plot = TRUE,
+  col = condition_colors_male
+)
+title(expression('Top 500 Genes - Filtered (Log'[2] ~ 'CPM)'))
+saveToPDF(paste0("results_", projectID, "/sex_stratified/MDS/MDS_filtered_condition_male.pdf"), width = 6, height = 6)
 ```
 
-# Density plot
-Density plots of log - intensity distribution of each library can be superposed on a single graph for a better comparison between libraries and for identification of libraries with weird distribution. 
-```{r density_plots}
-# set graphical parameter
-par(mfrow = c(1,3))
-
-# Normalize data for library size and expression intensity
-log2cpm.tech <- edgeR::cpm(dge, log = TRUE)
-log2cpm.filtered <- edgeR::cpm(dge.filtered, log = TRUE)
-log2cpm.norm <- edgeR::cpm(dge.filtered.norm, log = TRUE)
-
-# set colors
-colors <- condition_colors
-nsamples <- ncol(dge)
-
-# First, plot the first column of the log2cpm.tech density
-plot(density(log2cpm.tech[,1]), col = colors[1], lwd = 2, ylim = c(0,0.5), 
-     las = 2, main = "A. Raw", xlab = expression('Log'[2]~CPM))
-# For each sample plot the lcpm density
-for (i in 1:nsamples){
-  den <- density(log2cpm.tech[,i]) #subset each column
-  lines(den$x, den$y, col = colors[i], lwd = 2) 
-}
-
-# Second, plot log2cpm.filtered
-plot(density(log2cpm.filtered[,1]), col = colors[1], lwd = 2, ylim = c(0,0.5), 
-     las = 2, main = "B. Filtered", xlab = expression('Log'[2]~CPM))
-for (i in 2:nsamples) {
-  den <- density(log2cpm.filtered[,i])
-  lines(den$x, den$y, col = colors[i], lwd = 2)
-}
-
-# Third, plot log2cpm.norm
-plot(density(log2cpm.norm[,1]), col = colors[1], lwd = 2, ylim = c(0,0.5), 
-     las = 2, main = "C. TMM", xlab = expression('Log'[2]~CPM))
-for (i in 2:nsamples) {
-  den <- density(log2cpm.norm[,i])
-  lines(den$x, den$y, col = colors[i], lwd = 2)
-}
-
-# save
-path <- (paste0("../results_", projectID, "/both_sexes/library/gene_density"))
-saveToPDF(paste0(path, ".pdf"), width = 7, height = 5)
-```
-
-# Boxplots
-```{r boxplots}
-# set parameters
-par(mfrow = c(1, 3))
-
-# First look at dge.tech
-boxplot(
-  log2cpm.tech,
-  main = "A. Raw",
-  xlab = "",
-  ylab = expression('Counts per gene (Log'[2] ~ 'CPM)'),
-  axes = FALSE,
-  col = colors
-)
-axis(2) # 2 = left
-axis(
-  1,
-  # 1 = below
-  at = 1:nsamples,
-  # points at which tick-marks should be drawn
-  labels = colnames(log2cpm.tech),
-  las = 2,
-  cex.axis = 0.8 # size of axis
-)
-
-# Second, look at dge.filtered
-boxplot(
-  log2cpm.filtered,
-  main = "B. Filtered",
-  xlab = "",
-  ylab = expression('Counts per gene (Log'[2] ~ 'CPM)'),
-  axes = FALSE,
-  col = colors
-)
-axis(2)
-axis(
-  1,
-  at = 1:nsamples,
-  labels = colnames(log2cpm.filtered),
-  las = 2,
-  cex.axis = 0.8
-)
-
-# Third, look at dge.norm
-boxplot(
-  log2cpm.norm,
-  main = "C. Normalized",
-  xlab = "",
-  ylab = expression('Counts per gene (Log'[2] ~ 'CPM)'),
-  axes = FALSE,
-  col = colors
-)
-axis(2)
-axis(
-  1,
-  at = 1:nsamples,
-  labels = colnames(log2cpm.norm),
-  las = 2,
-  cex.axis = 0.8
-)
-path <- (paste0("../results_", projectID, "/both_sexes/library/lcpm_boxplots"))
-saveToPDF(paste0(path, ".pdf"), width = 11, height = 5)
-
-# clean up
-rm(log2cpm.tech, log2cpm.norm, log2cpm.filtered, den, colors, nsamples, path, i)
-```
-
-# Expression check 
-```{r}
-info <- as.data.frame(dge.filtered.norm$samples)
-
-info <- extract_gene_cpm("Uty", cpm_gene_names, info)
-info <- extract_gene_cpm("Omp", cpm_gene_names, info)
-info <- extract_gene_cpm("Hbb", cpm_gene_names, info)
-info <- extract_gene_cpm("Ttr", cpm_gene_names, info)
-
-# Gather the expression for the four genes into a long format for easy plotting
-plot_data <- info %>%
-  dplyr::select(sample, group, Uty, Omp, Hbb, Ttr) %>%
-  tidyr::gather(key = "Gene", value = "Expression", Uty, Omp, Hbb, Ttr) %>%
-  dplyr::mutate(
-    # Order the groups for plotting
-    group = factor(group, levels = c("Clean", "Bedding", "CH")),
-    # Order the genes for plotting
-    Gene = factor(Gene, levels = c("Uty", "Omp", "Hbb", "Ttr"))
-  )
-
-# Create a list of plots, one for each gene
-gene_plots <- list()
-genes_to_plot <- c("Uty", "Omp", "Hbb", "Ttr") # Only plotting the newly requested genes
-
-for (g in genes_to_plot) {
-  p <- plot_data %>%
-    dplyr::filter(Gene == g) %>%
-    ggplot(aes(x = sample, y = Expression, fill = group)) +
-    geom_col() +
-    labs(
-      title = paste(g),
-      x = "Experimental Group",
-      y = "CPM"
-    ) +
-    scale_fill_manual(values = c("Clean" = "skyblue", "Bedding" = "orange", "CH" = "brown")) +
-    theme_minimal() +
-    theme(
-      legend.position = "none",
-      plot.title = element_text(hjust = 0.5, face = "bold"),
-      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-     axis.title.x = element_blank() # x-axis title not needed with the facet title
-    )
-
-  gene_plots[[g]] <- p
-}
-
-# Use cowplot or patchwork to combine plots
-# Assuming you have loaded cowplot:
-
-# Combine the plots side-by-side (using plot_grid for simplicity)
-combined_plot <- cowplot::plot_grid(
-  gene_plots[["Uty"]],
-  gene_plots[["Omp"]],
-  gene_plots[["Hbb"]],
-  gene_plots[["Ttr"]],
-  ncol = 2 # Display in a single row
-)
-
-# Save the combined plot to PDF
-path_plot <- paste0("../results_", projectID, "/both_sexes/gene_expression_checks/Uty_Omp_Hbb_Ttr_expression.pdf")
-ggsave(path_plot, combined_plot, width = 14, height = 6)
-
-print(combined_plot)
-```
-
-```{r}
-rm(dge, dge.filtered, lcpm)
-```
 
 # Voom 
 voom transform counts to use for variancePartition  
 ```{r voom, warning=FALSE}
 formula <- (~ 0 + group)
-counts <- as.data.frame(dge.filtered.norm$counts)
-info <- as.data.frame(dge.filtered.norm$samples)
+counts_female <- as.data.frame(dge.filtered.norm.female$counts)
+info_female <- as.data.frame(dge.filtered.norm.female$samples)
 voom_with_weights <-
   variancePartition::voomWithDreamWeights(
-    counts = counts,
+    counts = counts_female,
     formula = formula,
-    data = info,
+    data = info_female,
     BPPARAM = BiocParallel::SnowParam(8),
     plot = TRUE
   )
-path <- paste0(paste0("../results_", projectID, "/both_sexes/voom/voom_raw"))
+path <- paste0(paste0("results_", projectID, "/sex_stratified/voom/voom_raw_female"))
 saveToPDF(paste0(path, ".pdf"), width = 6, height = 4)
-voomCounts <- voom_with_weights$E
+voomCounts_female <- voom_with_weights$E
+rm(voom_with_weights, formula)
+
+formula <- (~ 0 + group)
+counts_male <- as.data.frame(dge.filtered.norm.male$counts)
+info_male <- as.data.frame(dge.filtered.norm.male$samples)
+voom_with_weights <-
+  variancePartition::voomWithDreamWeights(
+    counts = counts_male,
+    formula = formula,
+    data = info_male,
+    BPPARAM = BiocParallel::SnowParam(8),
+    plot = TRUE
+  )
+path <- paste0(paste0("results_", projectID, "/sex_stratified/voom/voom_raw_male"))
+saveToPDF(paste0(path, ".pdf"), width = 6, height = 4)
+voomCounts_male <- voom_with_weights$E
 rm(voom_with_weights, formula)
 ```
-
-
 
 # Fit variance 
 variancePartition quantifies and interprets multiple sources of biological and technical variation in gene expression experiments. The package a linear mixed model to quantify variation in gene expression attributable to individual, tissue, time point, or technical variables.
 
 ```{r varpart}
-form_varPart <- ~ (1|group) + (1|sex) + (1 | collection_date) + RIN 
+form_varPart <- ~ (1|group) + (1 | collection_date) + RIN 
 # fit model and extract variance percents
-rownames(info) <- info$sample
-sample_order <- colnames(voomCounts)
-sorted_info <- info[match(sample_order, info$sample), ]
-varPart <- fitExtractVarPartModel(voomCounts, form_varPart, sorted_info)
+rownames(info_female) <- info_female$sample
+sample_order_female <- colnames(voomCounts_female)
+sorted_info_female <- info[match(sample_order_female, info_female$sample), ]
+varPart_female <- fitExtractVarPartModel(voomCounts_female, form_varPart, sorted_info_female)
+
+rownames(info_male) <- info_male$sample
+sample_order_male <- colnames(voomCounts_male)
+sorted_info_male <- info[match(sample_order_male, info_male$sample), ]
+varPart_male <- fitExtractVarPartModel(voomCounts_male, form_varPart, sorted_info_male)
 ```
 
 # Plot VarPart

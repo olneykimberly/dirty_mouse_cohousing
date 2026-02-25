@@ -1,4 +1,7 @@
 #----------------- Libraries
+set.seed(28)
+.libPaths(c("/tgen_labs/jfryer/kolney/R/x86_64-pc-linux-gnu-library/4.3", "/usr/local/lib/R/site-library", "/usr/local/lib/R/library"))
+.libPaths()
 library(ggplot2)
 library(dplyr)
 library(RColorBrewer)
