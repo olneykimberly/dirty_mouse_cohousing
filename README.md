@@ -47,6 +47,11 @@ See the snakefile for specific details for each step.
 The config file was generated using the 01 and 02 scripts for obtaining sample information and creating the config file. 
 ```
 Snakemake -s Snakefile 
+
+## step by step for making the config file for the Snakefile 
+sh 01_get_readgroup_info.sh # obtains read information from fastq files
+python 02_create_config.py # outputs the config file. Update the paths in this file for your system
+sbatch 03_run_snakemake.sh # submit the Snakefile as a slurm job (opitional)
 ```
 Output includes STAR reads per gene, which can then be read into R for differential expression.
 
