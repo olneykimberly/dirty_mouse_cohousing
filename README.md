@@ -17,9 +17,6 @@ This git repo contains scripts for the following:
 -   Generation of shiny app for exploration of the results, view app [here](https://fryerlab.shinyapps.io/dirty_mice_cohousing/)
 
 
-*Characterize cell-type transcriptional alterations across neuropathologies:*
-
-
 ## Set up conda environment
 This workflow uses conda. For information on how to install conda [here](https://docs.conda.io/projects/conda/en/latest/user-guide/index.html)
 
@@ -55,7 +52,8 @@ Output includes STAR reads per gene, which can then be read into R for different
 
 ## Variance assessment and differential expression
 ```
-R 04_differential_expression.Rmd
+R 04_differential_expression.Rmd # both sexes
+R 04_differential_expression_sex_stratified.Rmd # within each ses
 ```
 Output is differentially expressed genes for all pairwise comparisons.
 
