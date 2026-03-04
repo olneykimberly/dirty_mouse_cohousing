@@ -58,7 +58,7 @@ Output includes STAR reads per gene, which can then be read into R for different
 ## Variance assessment and differential expression
 ```
 R 04_differential_expression.Rmd # both sexes
-R 04_differential_expression_sex_stratified.Rmd # within each ses
+R 04_differential_expression_sex_stratified.Rmd # within each sex
 ```
 Output is differentially expressed genes for all pairwise comparisons.
 
