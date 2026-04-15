@@ -393,50 +393,61 @@ form_varPart <- ~ (1|group) + (1 | collection_date) + RIN
 # fit model and extract variance percents
 rownames(info_female) <- info_female$sample
 sample_order_female <- colnames(voomCounts_female)
-sorted_info_female <- info[match(sample_order_female, info_female$sample), ]
+sorted_info_female <- info_female[match(sample_order_female, info_female$sample), ]
 varPart_female <- fitExtractVarPartModel(voomCounts_female, form_varPart, sorted_info_female)
 
 rownames(info_male) <- info_male$sample
 sample_order_male <- colnames(voomCounts_male)
-sorted_info_male <- info[match(sample_order_male, info_male$sample), ]
+sorted_info_male <- info_male[match(sample_order_male, info_male$sample), ]
 varPart_male <- fitExtractVarPartModel(voomCounts_male, form_varPart, sorted_info_male)
 ```
 
 # Plot VarPart
 ```{r plot_varPart}
-plotVarPart(sortCols(varPart), label.angle = 80)
-saveToPDF(paste0("../results_", projectID, "/both_sexes/variance/variance_partition_violins.pdf"), width = 8.5, height = 5)
-
-varPart$gene_id <- rownames(varPart)
+plotVarPart(sortCols(varPart_female), label.angle = 80)
+saveToPDF(paste0("results_", projectID, "/sex_stratified/variance/variance_partition_violins_female.pdf"), width = 8.5, height = 5)
+varPart_female$gene_id <- rownames(varPart_female)
 # merge with gene information to get gene names for gene_id
-variance_explained <- merge(varPart, genes, by = "gene_id")
+variance_explained_female <- merge(varPart_female, genes, by = "gene_id")
+write.table(variance_explained_female, paste0("results_", projectID, "/sex_stratified/variance/variance_explained_female.tsv"),sep = "\t", quote = FALSE, row.names = FALSE)
 
-write.table(variance_explained, paste0("../results_", projectID, "/both_sexes/variance/variance_explained.tsv"),sep = "\t", quote = FALSE, row.names = FALSE)
+plotVarPart(sortCols(varPart_male), label.angle = 80)
+saveToPDF(paste0("results_", projectID, "/sex_stratified/variance/variance_partition_violins_male.pdf"), width = 8.5, height = 5)
+varPart_male$gene_id <- rownames(varPart_male)
+# merge with gene information to get gene names for gene_id
+variance_explained_male <- merge(varPart_male, genes, by = "gene_id")
+write.table(variance_explained_male, paste0("results_", projectID, "/sex_stratified/variance/variance_explained_male.tsv"),sep = "\t", quote = FALSE, row.names = FALSE)
 ```
 
 
 # CCA 
 Canonical Correlation Analysis
 ```{r}
-form <- ~ group  + sex + collection_date + RIN
+form <- ~ group + collection_date + RIN
 # Compute Canonical Correlation Analysis (CCA) # between all pairs of variables
 # returns absolute correlation value
-C = canCorPairs(form, sorted_info)
+C = canCorPairs(form, sorted_info_female)
 # Plot correlation matrix
 plotCorrMatrix( C )
-saveToPDF(paste0("../results_", projectID, "/both_sexes/variance/CCA.pdf"), width = 5, height = 5)
+saveToPDF(paste0("results_", projectID, "/sex_stratified/variance/CCA_female.pdf"), width = 5, height = 5)
+rm(C)
+
+C = canCorPairs(form, sorted_info_male)
+# Plot correlation matrix
+plotCorrMatrix( C )
+saveToPDF(paste0("results_", projectID, "/sex_stratified/variance/CCA_male.pdf"), width = 5, height = 5)
 
 rm(form, C)
 ```
 
 # RIN
 ```{r}
-info <- dge.filtered.norm$samples
-p <- info %>%
+info_female <- dge.filtered.norm.female$samples
+p <- info_female %>%
     ggplot(aes(x = group, y = RIN, fill = group)) +
     geom_boxplot() +
     labs(
-      title = paste("RIN"),
+      title = paste("RIN - female"),
       x = "Experimental Group",
       y = "RIN"
     ) +
@@ -448,16 +459,40 @@ p <- info %>%
      axis.title.x = element_blank() # x-axis title not needed with the facet title
     )
 p
-saveToPDF(paste0("../results_", projectID, "/both_sexes/variance/RIN.pdf"), width = 5, height = 5)
+saveToPDF(paste0("results_", projectID, "/sex_stratified/variance/RIN_female.pdf"), width = 5, height = 5)
 
+
+info_male <- dge.filtered.norm.male$samples
+p <- info_male %>%
+    ggplot(aes(x = group, y = RIN, fill = group)) +
+    geom_boxplot() +
+    labs(
+      title = paste("RIN - male"),
+      x = "Experimental Group",
+      y = "RIN"
+    ) +
+    scale_fill_manual(values = c("Clean" = "skyblue", "Bedding" = "orange", "CH" = "brown")) +
+    theme_minimal() +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(hjust = 0.5, face = "bold"),
+     axis.title.x = element_blank() # x-axis title not needed with the facet title
+    )
+p
+saveToPDF(paste0("results_", projectID, "/sex_stratified/variance/RIN_male.pdf"), width = 5, height = 5)
 ```
 
 # Design matrix
 ```{r design_matrix}
-design <- model.matrix( ~ 0 + dge.filtered.norm$samples$group + dge.filtered.norm$samples$sex + dge.filtered.norm$samples$RIN)
-colnames(design) <- c("Clean", "Bedding", "CH", "sex", "RIN")
+design_female <- model.matrix( ~ 0 + dge.filtered.norm.female$samples$group + dge.filtered.norm.female$samples$RIN)
+colnames(design_female) <- c("Clean", "Bedding", "CH", "RIN")
 # Inspect
-design
+design_female
+
+design_male <- model.matrix( ~ 0 + dge.filtered.norm.male$samples$group + dge.filtered.norm.male$samples$RIN)
+colnames(design_male) <- c("Clean", "Bedding", "CH", "RIN")
+# Inspect
+design_male
 ```
 
 # Voom
@@ -465,9 +500,15 @@ When the library sizes are quite variable between samples, then the voom approac
 The voom method estimates the mean-variance relationship of the log-counts.
 Generates a precision weight for each observation and enters these into the limma empirical Bayes analysis pipeline.
 ```{r voom_covariates}
-v <- voomWithQualityWeights(
-  dge.filtered.norm,  # our DGEList object
-  design, # our design matrix
+v_female <- voomWithQualityWeights(
+  dge.filtered.norm.female,  # our DGEList object
+  design_female, # our design matrix
+  plot = TRUE # should mean-variance trend & sample-specific weights be displayed?
+  )
+
+v_male <- voomWithQualityWeights(
+  dge.filtered.norm.male,  # our DGEList object
+  design_male, # our design matrix
   plot = TRUE # should mean-variance trend & sample-specific weights be displayed?
   )
 ```
@@ -475,14 +516,14 @@ v <- voomWithQualityWeights(
 # Contrast plot
 ```{r contrasts}
 # fits linear model for each gene given a series of arrays
-fit <- lmFit(v, design) # voom_cov
-coef.fit <- fit$coefficients
+fit_female <- lmFit(v_female, design_female) # voom_cov
+coef.fit_female <- fit_female$coefficients
 
 contrasts <- makeContrasts(
   Bedding_vs_Clean = Bedding - Clean,
   CH_vs_Clean = CH - Clean,
   CH_vs_Bedding = CH - Bedding,
-  levels = colnames(design))
+  levels = colnames(design_female))
 head(contrasts)
 
 # save contrast names
@@ -490,14 +531,36 @@ allComparisons <- colnames(contrasts)
 allComparisons # check
 
 # run contrast analysis
-vfit <- contrasts.fit(fit, contrasts = contrasts)
+vfit_female <- contrasts.fit(fit_female, contrasts = contrasts)
 
 # Compute differential expression based on the empirical Bayes moderation of the standard errors towards a common value.
 # The logCPM values can then be used in any standard limma pipeline, using the trend=TRUE
-veBayesFit <- eBayes(vfit, trend = TRUE, robust=TRUE)
-plotSA(veBayesFit, main = "Final Model: Mean-variance Trend")
+veBayesFit_female <- eBayes(vfit_female, trend = TRUE, robust=TRUE)
+plotSA(veBayesFit_female, main = "Final Model: Mean-variance Trend")
 
+#male
 #rm(design, fit, coef.fit, contrasts, vfit)
+fit_male <- lmFit(v_male, design_male) # voom_cov
+coef.fit_male <- fit_male$coefficients
+
+contrasts <- makeContrasts(
+  Bedding_vs_Clean = Bedding - Clean,
+  CH_vs_Clean = CH - Clean,
+  CH_vs_Bedding = CH - Bedding,
+  levels = colnames(design_male))
+head(contrasts)
+
+# save contrast names
+allComparisons <- colnames(contrasts)
+allComparisons # check
+
+# run contrast analysis
+vfit_male <- contrasts.fit(fit_male, contrasts = contrasts)
+
+# Compute differential expression based on the empirical Bayes moderation of the standard errors towards a common value.
+# The logCPM values can then be used in any standard limma pipeline, using the trend=TRUE
+veBayesFit_male <- eBayes(vfit_male, trend = TRUE, robust=TRUE)
+plotSA(veBayesFit_male, main = "Final Model: Mean-variance Trend")
 ```
 
 # DEGs summary
@@ -505,36 +568,69 @@ plotSA(veBayesFit, main = "Final Model: Mean-variance Trend")
 qval <- 0.05
 lfc.cutoff <- 0
 
-sumTable <- 
+sumTable_female <- 
   summary(decideTests(
-    veBayesFit,  # object
+    veBayesFit_female,  # object
     adjust.method = "BH", # by default the method = "separate"
     p.value = qval,
     lfc = lfc.cutoff  # numeric, minimum absolute log2-fold change required
   ))
 
 print(paste0(" q < ", qval, " & absolute log2-fold change > ", lfc.cutoff))
-sumTable
-#write.table(sumTable, paste0("../results_", projectID, "/both_sexes/DEGs/DEGs_summary_q", qval,"_log2FC", lfc.cutoff, ".txt"), quote = FALSE, sep = "\t")
-genes_relevant <- dge.filtered.norm$genes
+sumTable_female
 
-#rm(sumTable)
+sumTable_male <- 
+  summary(decideTests(
+    veBayesFit_male,  # object
+    adjust.method = "BH", # by default the method = "separate"
+    p.value = qval,
+    lfc = lfc.cutoff  # numeric, minimum absolute log2-fold change required
+  ))
+
+print(paste0(" q < ", qval, " & absolute log2-fold change > ", lfc.cutoff))
+sumTable_male
 ```
 
 # DEG heatmap 
 ```{r DEG_heatmap}
-sumTable <- as.data.frame(sumTable)
-colnames(sumTable) <- c("direction", "comparison", "count")
-sumTable <- sumTable[!sumTable$direction == "NotSig",]
-sumTable <- sumTable |> 
+sumTable_female <- as.data.frame(sumTable_female)
+colnames(sumTable_female) <- c("direction", "comparison", "count")
+sumTable_female <- sumTable_female[!sumTable_female$direction == "NotSig",]
+sumTable_female <- sumTable_female |> 
   pivot_wider(names_from = comparison, values_from = count)
-row_names_to_keep <- sumTable$direction
-sumTable <- sumTable[, -which(names(sumTable) == "direction")]
-sumTable <- t(sumTable)
-colnames(sumTable) <- row_names_to_keep
-df <- as.data.frame(sumTable)
+row_names_to_keep <- sumTable_female$direction
+sumTable_female <- sumTable_female[, -which(names(sumTable_female) == "direction")]
+sumTable_female <- t(sumTable_female)
+colnames(sumTable_female) <- row_names_to_keep
+df <- as.data.frame(sumTable_female)
 
-pdf(paste0("../results_", projectID, "/both_sexes/DEGs/DEGs_heatmap.pdf"), height = 6, width = 6)
+pdf(paste0("results_", projectID, "/sex_stratified/DEGs/DEGs_heatmap_female.pdf"), height = 6, width = 6)
+pheatmap::pheatmap(df,
+                   main = paste0("q < ", qval, " & |log2FC| > ", lfc.cutoff),
+                   treeheight_row = 0,
+                   treeheight_col = 0,
+                   color = rev(natparks.pals("WindCave")),
+                   cluster_rows = FALSE,
+                   display_numbers = round(df, digits = 0),
+                   fontsize_number = 12,
+                   number_color = ifelse(df > 400, "white", "black"),
+                   angle_col = "0",
+                   breaks = c(seq(0, 500, length.out = length(rev(natparks.pals("WindCave"))))))
+dev.off()
+rm(df)
+
+sumTable_male <- as.data.frame(sumTable_male)
+colnames(sumTable_male) <- c("direction", "comparison", "count")
+sumTable_male <- sumTable_male[!sumTable_male$direction == "NotSig",]
+sumTable_male <- sumTable_male |> 
+  pivot_wider(names_from = comparison, values_from = count)
+row_names_to_keep <- sumTable_male$direction
+sumTable_male <- sumTable_male[, -which(names(sumTable_male) == "direction")]
+sumTable_male <- t(sumTable_male)
+colnames(sumTable_male) <- row_names_to_keep
+df <- as.data.frame(sumTable_male)
+
+pdf(paste0("results_", projectID, "/sex_stratified/DEGs/DEGs_heatmap_male.pdf"), height = 6, width = 6)
 pheatmap::pheatmap(df,
                    main = paste0("q < ", qval, " & |log2FC| > ", lfc.cutoff),
                    treeheight_row = 0,
@@ -549,51 +645,76 @@ pheatmap::pheatmap(df,
 dev.off()
 ```
 
-# DGE Check 
-```{r DGE_check, eval=FALSE}
-DEG_check <- topTable(
-  veBayesFit, 
-  coef = "CH_vs_Clean",  
-  n = Inf, 
-  p.value = 1,
-  lfc = 0, 
-  sort.by = "P", 
-  genelist = dge.filtered.norm$genes, 
-  confint = TRUE # column of confidence interval 
-    )
-```
-
 # Output DEG tables
 ```{r output_DEG_tables}
+genes_relevant_female <- dge.filtered.norm.female$genes
+
 coef <- 1
 
 for (i in allComparisons) {
   vTopTableAll <- topTable(
-    veBayesFit, 
+    veBayesFit_female, 
     coef = coef,  
     n = Inf, 
     p.value = 1,
     lfc = 0, 
     sort.by = "P", 
-    genelist = genes_relevant, 
+    genelist = genes_relevant_female, 
     confint = TRUE # column of confidence interval 
     )
     saveRDS(vTopTableAll, file = 
-            paste0("../rObjects/gene_tables/", i,"_gene_table.rds"))
-  path <- paste0("../results_", projectID, "/both_sexes/DEGs/", i, "_q1.00.txt", sep = "") 
+            paste0("rObjects/gene_tables/", i,"_gene_table.rds"))
+  path <- paste0("results_", projectID, "/sex_stratified/DEGs/", i, "_q1.00_female.txt", sep = "") 
   write.table(vTopTableAll, path, sep = "\t", row.names = FALSE, quote = FALSE)
   
   # p < 0.05, log2fc > 1
   vTopTableSig <-
     topTable( 
-      veBayesFit,  
+      veBayesFit_female,  
       coef = coef,  
       n = Inf, 
       p.value = qval,
       lfc = lfc.cutoff,
-      genelist = genes_relevant, 
+      genelist = genes_relevant_female, 
       confint = TRUE)
-  path <- paste0("../results_", projectID, "/both_sexes/DEGs/", i, "_q", qval, "_lfc", lfc.cutoff,".txt", sep = "") 
+  path <- paste0("results_", projectID, "/sex_stratified/DEGs/", i, "_q", qval, "_lfc", lfc.cutoff,"_female.txt", sep = "") 
+  write.table(vTopTableSig, path, sep = "\t", row.names = FALSE, quote = FALSE)
+  # increment 
+  coef <- coef + 1
+}
+remove(coef, vTopTableAll, vTopTableSig)
+
+genes_relevant_male <- dge.filtered.norm.male$genes
+
+coef <- 1
+
+for (i in allComparisons) {
+  vTopTableAll <- topTable(
+    veBayesFit_male, 
+    coef = coef,  
+    n = Inf, 
+    p.value = 1,
+    lfc = 0, 
+    sort.by = "P", 
+    genelist = genes_relevant_male, 
+    confint = TRUE # column of confidence interval 
+    )
+    saveRDS(vTopTableAll, file = 
+            paste0("rObjects/gene_tables/", i,"_gene_table.rds"))
+  path <- paste0("results_", projectID, "/sex_stratified/DEGs/", i, "_q1.00_male.txt", sep = "") 
+  write.table(vTopTableAll, path, sep = "\t", row.names = FALSE, quote = FALSE)
+  
+  # p < 0.05, log2fc > 1
+  vTopTableSig <-
+    topTable( 
+      veBayesFit_male,  
+      coef = coef,  
+      n = Inf, 
+      p.value = qval,
+      lfc = lfc.cutoff,
+      genelist = genes_relevant_male, 
+      confint = TRUE)
+  path <- paste0("results_", projectID, "/sex_stratified/DEGs/", i, "_q", qval, "_lfc", lfc.cutoff,"_male.txt", sep = "") 
   write.table(vTopTableSig, path, sep = "\t", row.names = FALSE, quote = FALSE)
   # increment 
   coef <- coef + 1
@@ -605,13 +726,13 @@ remove(coef, vTopTableAll, vTopTableSig)
 Principal component analysis, or PCA, is a dimensionality reduction method that is often used to reduce the dimensionality of large data sets, by transforming a large set of variables into a smaller one that still contains most of the information in the large set.
 ```{r PCA}
 # Setting the N of genes to use
-ntop = length(dge.filtered.norm$genes$gene_id)
+ntop = length(dge.filtered.norm.female$genes$gene_id)
 # Sorting by the coefficient of variance
-means <- rowMeans(voomCounts)
-Pvars <- rowVars(voomCounts, useNames = TRUE)
+means <- rowMeans(voomCounts_female)
+Pvars <- rowVars(voomCounts_female, useNames = TRUE)
 cv2 <- Pvars / means ^ 2
 select <- order(cv2, decreasing = TRUE)[seq_len(min(ntop, length(cv2)))]
-highly_variable_exp <- ((voomCounts)[select,])
+highly_variable_exp <- ((voomCounts_female)[select,])
 dim(highly_variable_exp)
 
 # Running PCA
@@ -623,27 +744,42 @@ pca_exp <- prcomp(t(highly_variable_exp), scale = F, center = T)
 dim1_10 <- data.frame(pca_exp$x[, 1:8])
 # Adding metadata
 dim1_10$sample <- rownames(dim1_10)
-sorted_info$sample <- sorted_info$sample
-pcaWithMetadata <- merge(dim1_10, sorted_info, by = "sample", all = TRUE)
+pcaWithMetadata <- merge(dim1_10, sorted_info_female, by = "sample", all = TRUE)
 #pcaWithMetadata$group <- pcaWithMetadata$condition
 
 # Plotting
 ggplot(data = pcaWithMetadata, aes(x = PC1, y = PC2, shape = group, color = group)) +
   geom_point(size = 2.5) +
   theme_bw() 
-saveToPDF(paste0("../results_", projectID, "/both_sexes/PCA/PCA_dim1&2.pdf"), width = 6, height = 5)
+saveToPDF(paste0("results_", projectID, "/sex_stratified/PCA/PCA_dim1&2_female.pdf"), width = 6, height = 5)
 
-ggplot(data = pcaWithMetadata, aes(x = PC1, y = PC2, shape = sex, color = sex)) +
+# Setting the N of genes to use
+ntop = length(dge.filtered.norm.male$genes$gene_id)
+# Sorting by the coefficient of variance
+means <- rowMeans(voomCounts_male)
+Pvars <- rowVars(voomCounts_male, useNames = TRUE)
+cv2 <- Pvars / means ^ 2
+select <- order(cv2, decreasing = TRUE)[seq_len(min(ntop, length(cv2)))]
+highly_variable_exp <- ((voomCounts_male)[select,])
+dim(highly_variable_exp)
+
+# Running PCA
+pca_exp <- prcomp(t(highly_variable_exp), scale = F, center = T)
+# scale a logical value indicating whether the variables should be scaled to have unit variance before the analysis takes place.
+# a logical value indicating whether the variables should be shifted to be zero centered.
+
+# Dataframe with the first 8 PCs
+dim1_10 <- data.frame(pca_exp$x[, 1:8])
+# Adding metadata
+dim1_10$sample <- rownames(dim1_10)
+pcaWithMetadata <- merge(dim1_10, sorted_info_male, by = "sample", all = TRUE)
+#pcaWithMetadata$group <- pcaWithMetadata$condition
+
+# Plotting
+ggplot(data = pcaWithMetadata, aes(x = PC1, y = PC2, shape = group, color = group)) +
   geom_point(size = 2.5) +
   theme_bw() 
-saveToPDF(paste0("../results_", projectID, "/both_sexes/PCA/PCA_dim1&2_sex.pdf"), width = 6, height = 5)
-
-ggplot(data = pcaWithMetadata, aes(x = PC2, y = PC3, shape = group, color = group)) +
-  geom_point(size = 2.5) +
-  theme_bw() 
-saveToPDF(paste0("../results_", projectID, "/both_sexes/PCA/PCA_dim2&3.pdf"), width = 6, height = 5)
-
-write.table(pcaWithMetadata, paste0("../results_", projectID, "/both_sexes/PCA/PCA_metadata.txt"), quote = FALSE, sep = "\t")
+saveToPDF(paste0("results_", projectID, "/sex_stratified/PCA/PCA_dim1&2_male.pdf"), width = 6, height = 5)
 ```
 
 
@@ -653,7 +789,7 @@ negFC <- 0
 posFC <- 0
 for (i in allComparisons) {
   group1_vs_group2 <-
-    read.delim(paste0("../results_", projectID, "/both_sexes/DEGs/", i,"_q1.00.txt"))
+    read.delim(paste0("results_", projectID, "/sex_stratified/DEGs/", i,"_q1.00_male.txt"))
     i <- gsub("_", " ", i)
     if (!any(group1_vs_group2$adj.P.Val < qval, na.rm = TRUE)) {
     # If there are no significant DEGs, create a volcano plot with all points in gray
@@ -673,9 +809,9 @@ for (i in allComparisons) {
                  linetype = "dashed") +
       labs(x = expression(log[2](FC)),
            y = expression(-log[10] ~ "(" ~ italic("p") ~ "-value)")) +
-      ggtitle(paste0(i, "\nNo significant DEGs found"))
+      ggtitle(paste0(i, "\nNo significant DEGs found - male"))
     i <- gsub(" ", "_", i)
-    pdf(paste0("../results_", projectID, "/both_sexes/volcano/", i, ".pdf"), height = 6, width = 6)
+    pdf(paste0("results_", projectID, "/sex_stratified/volcano/", i, "_male.pdf"), height = 6, width = 6)
     print(p)
     dev.off()
   } else {
@@ -753,7 +889,7 @@ for (i in allComparisons) {
                  #  horizontal line
                  colour = "#000000",
                  linetype = "dashed") +
-      ggtitle(paste0(i, "\nq < ", qval, " & |log2FC| > ", lfc.cutoff)) + # 
+      ggtitle(paste0(i, " male", "\nq < ", qval, " & |log2FC| > ", lfc.cutoff)) + # 
       geom_text_repel(
         data = up10,
         aes(
@@ -805,8 +941,8 @@ for (i in allComparisons) {
     p
     i <- gsub(" ", "_", i)
     # save
-    path <-paste0("../results_", projectID, "/both_sexes/volcano/",i)
-    pdf(paste0(path, ".pdf"),
+    path <-paste0("results_", projectID, "/sex_stratified/volcano/",i)
+    pdf(paste0(path, "_male.pdf"),
         height = 6,
         width = 6)
     print(p)
@@ -822,145 +958,3 @@ for (i in allComparisons) {
 # clean up
 remove(up, up10, upFold, group1_vs_group2, downFold, down10, data, p, my_colors)
 ```
-
-# Make excel table
-```{r excel}
-# first read in the files
-for (i in allComparisons) {
-  filepath <- paste0("../results_", projectID, "/both_sexes/DEGs/", i,"_q1.00.txt")
-  assign(paste0(i),
-         read.delim(filepath, header = TRUE, sep = "\t",stringsAsFactors = FALSE))
-}
-
-allComparisons
-list_of_datasets <- list(
-  "Bedding_vs_Clean" = Bedding_vs_Clean,
-  "CH_vs_Clean" = CH_vs_Clean,
-  "CH_vs_Bedding" = CH_vs_Bedding
-)
-write.xlsx(list_of_datasets, file = paste0("../results_", projectID, "/both_sexes/DEGs/DEGs.q1.00.xlsx"))
-```
-
-# Master DEG table
-```{r}
-# Columns:
-df_list <- list()
-base_path <- paste0("../results_", projectID, "/both_sexes/DEGs/")
-for (comparison_name in allComparisons) {
-  file_path <- paste0(base_path, comparison_name, "_q1.00.txt")
-  temp_df <- read.delim(file_path)
-  comparison_string <- gsub("_", " ", comparison_name)
-  temp_df$comparison <- comparison_string
-  df_list[[comparison_name]] <- temp_df
-}
-df <- do.call(rbind, df_list)
-df <- df[,c(16,4,8:10,14,11,13,1,3)]
-str(df)
-
-df <- df[order(df$gene_name),]
-write.table(df, file = paste0("../results_", projectID, "/both_sexes/DEGs/DEGs_AllComparisons.txt"),sep = "\t", quote = FALSE, row.names = FALSE)
-saveRDS(dge.filtered.norm, "../rObjects/dge.filtered.norm.bothsexes.rds")
-```
-
-# UpSet
-```{r read_DEG_table}
-base_path <- paste0("../results_", projectID, "/both_sexes/DEGs/")
-
-for (i in allComparisons) {
-  file_path <- paste0(base_path, i, "_q1.00.txt")
-  assign(paste0(i),
-         read.delim(
-           file_path,
-           header = TRUE,
-           sep = "\t",
-           stringsAsFactors = FALSE
-         ))
-  }
-```
-
-# DEGs by FDRq <= 0.05
-```{r}
-# sex as a covariate
-CH_vs_Clean_up <- subset(CH_vs_Clean, logFC > 0.0 & adj.P.Val <= 0.05)
-CH_vs_Clean_down <- subset(CH_vs_Clean, logFC < -0.0 & adj.P.Val <= 0.05)
-CH_vs_Bedding_up <- subset(CH_vs_Bedding, logFC > 0.0 & adj.P.Val <= 0.05)
-CH_vs_Bedding_down <- subset(CH_vs_Bedding, logFC < -0.0 & adj.P.Val <= 0.05)
-```
-
-# Upset of DEGs
-```{r}
-list_input <- list("CH vs clean down-regulated" = CH_vs_Clean_down$gene_name,
-                   "CH vs clean up-regulated" = CH_vs_Clean_up$gene_name,
-                   "CH vs bedding down-regulated" = CH_vs_Bedding_down$gene_name,
-                   "CH vs bedding up-regulated" = CH_vs_Bedding_up$gene_name)
-data <- fromList(list_input)
-
-upset_gene <- upset(data, set_sizes = FALSE,
-      c('CH vs clean down-regulated',
-        'CH vs bedding down-regulated',
-        'CH vs clean up-regulated',
-        'CH vs bedding up-regulated'),
-      themes=upset_modify_themes(
-        list('intersections_matrix'=theme(text=element_text(size=10),
-              plot.margin = margin(0, 0, 0, 0, "cm")),
-          'overall_sizes' = theme(axis.text.x = element_text(size =10), 
-              plot.margin = margin(0, 0, 0, 0, "cm")))),
-  queries=list(
-    upset_query(set='CH vs clean down-regulated', fill='blue'),
-    upset_query(set='CH vs bedding down-regulated', fill='blue'),
-    upset_query(set='CH vs clean up-regulated', fill='red'),
-    upset_query(set='CH vs bedding up-regulated', fill='red')
-  ),
-  intersections = list(
-                       c('CH vs clean down-regulated', 'CH vs bedding down-regulated'), 
-                       'CH vs clean down-regulated',
-                       'CH vs bedding down-regulated', 
-                       c('CH vs clean up-regulated', 'CH vs bedding up-regulated'), 
-                       'CH vs clean up-regulated',
-                       'CH vs bedding up-regulated'
-  ),
-  base_annotations=list(
-    'Intersection size'=(
-        intersection_size(
-        size=2,
-        text = list(size = 3),
-        text_mapping = aes(),
-        bar_number_threshold=3,  # show all numbers on top of bars
-        width=0.3,   # reduce width of the bars
-        mapping=aes(fill='bars_color')
-      )
-      + scale_fill_manual(values=c('grey'), guide='none')
-      + scale_y_continuous(expand=expansion(mult=c(0, 0.5)))
-      + theme(axis.text.y = element_text(size = 10),
-              axis.title.y = element_text(size = 10),
-          panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          plot.margin = margin(0, 0, 0, 0, "cm"), 
-          axis.line=element_line(colour='black')))),
-  matrix=intersection_matrix(
-      geom=geom_point(
-        shape='circle filled',
-        size=2,
-        stroke=0.45)) +
-        theme(axis.text.y = element_text(size = 10),
-              axis.title.y = element_text(size = 10), 
-              plot.margin = margin(0, 0, 0, 0, "cm")),
-    sort_sets=FALSE,
-  sort_intersections=FALSE)
-upset_gene
-
-# save
-path <- paste0("../results_", projectID, 
-               "/both_sexes/upset/UpSet_DEGs_q0.05")
-saveToPDF(paste0(path, ".pdf"), width = 4, height = 4)
-
-# Binary table with colnames:
-write.table(
-  data,
-  paste0("../results_", projectID, 
-               "/both_sexes/upset/UpSet_list_binary_results.txt"),
-  sep = "\t",
-  quote = FALSE
-)
-```
-

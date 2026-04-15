@@ -22,7 +22,7 @@ with open('sampleReadGroupInfo.txt', 'r') as infile:
 # create header and write to outfile
 header = '''{{
     "Commment_Input_Output_Directories": "This section specifies the input and output directories for scripts",
-    "rawReads" : "/tgen_labs/jfryer/projects/dirty_mice/CH/bulkRNA",
+    "rawReads" : "../../dirty_mice/CH/bulkRNA",
     "rawQC" : "../rawQC/",
     "trimmedReads" : "../trimmedReads/",
     "trimmedQC" : "../trimmedQC/",
@@ -30,9 +30,9 @@ header = '''{{
     "bamstats" : "../bamstats/",
 
     "Comment_Reference" : "This section specifies the location of the mouse, Ensembl reference genome",
-    "Mmusculus.fa" : "/tgen_labs/jfryer/projects/references/mouse/refdata-gex-GRCm39-2024-A/fasta/genome",
-    "Mmusculus.gtf" : "/tgen_labs/jfryer/projects/references/mouse/refdata-gex-GRCm39-2024-A/genes/genes",
-    "star_ref_index" : "/tgen_labs/jfryer/projects/references/mouse/refdata-gex-GRCm39-2024-A_STARv2.7.11_150sjdb",
+    "Mmusculus.fa" : "../../references/mouse/refdata-gex-GRCm39-2024-A/fasta/genome",
+    "Mmusculus.gtf" : "../../references/mouse/refdata-gex-GRCm39-2024-A/genes/genes",
+    "star_ref_index" : "../../references/mouse/refdata-gex-GRCm39-2024-A_STARv2.7.11_150sjdb",
 
     "Comment_Sample_Info": "The following section lists the samples that are to be analyzed",
     "sample_names": {0},
@@ -80,7 +80,7 @@ with open('sampleReadGroupInfo.txt', 'r') as infile:
 
         out = '''
     "{0}":{{
-        "fq_path": "/tgen_labs/jfryer/projects/dirty_mice/CH/bulkRNA/",
+        "fq_path": "../../dirty_mice/CH/bulkRNA/",
         "fq1": "{1}",
         "fq2": "{2}",
         "ID": "{3}",

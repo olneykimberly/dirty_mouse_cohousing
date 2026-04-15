@@ -13,7 +13,7 @@ module load python3
 conda activate dirty_mice
 
 # change directory to where Snakefile is located
-CWD="/tgen_labs/jfryer/kolney/dirty_mice/dirty_mouse_cohousing/scripts"
+CWD="/dirty_mice/dirty_mouse_cohousing/scripts"
 cd $CWD
 
 snakemake --nolock -s Snakefile --jobs 48 --executor slurm --profile slurm_profile --rerun-incomplete --default-resources mem_mb=64000 ntasks=1 threads=8 runtime=550 cpus_per_task=8

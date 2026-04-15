@@ -6,3 +6,12 @@ scripts/.snakemake/*
 scripts/slurm*
 scripts/shiny/rsconnect/*
 scripts/slurm_profile/*
+rawQC/*
+results/*
+starAligned/*
+trimmedReads/*
+trimmedQC/*
+results_CH/*
+rObjects/*
+scripts/shiny/*
+.DS_Store

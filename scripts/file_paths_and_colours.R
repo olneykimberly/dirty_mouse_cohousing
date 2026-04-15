@@ -1,25 +1,31 @@
 #----------------- Libraries
-set.seed(28)
-.libPaths(c("/tgen_labs/jfryer/kolney/R/x86_64-pc-linux-gnu-library/4.3", "/usr/local/lib/R/site-library", "/usr/local/lib/R/library"))
-.libPaths()
+# lib path /R/rstudio-4.3.0-4-with_modules.sif/libs
+# R version 4.5.2
 library(ggplot2)
 library(dplyr)
 library(RColorBrewer)
 library(DESeq2) 
+library(glmGamPoi)
+install.packages("glmGamPoi")
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("edgeR")
+
+.libPaths()
 require(openxlsx)
 library(ggrepel)
-library(glmGamPoi)
-library(devtools)
+#library(devtools)
 library(reshape2)
-library(edgeR)  
-library(limma)  
-library(tidyverse)
-library(GenomicFeatures)
+#library(edgeR)  
+#library(limma)  
+#library(tidyverse)
+#library(GenomicFeatures)
 library(data.table)
-library(philentropy)
+#library(philentropy)
 library(gplots)
-library(variancePartition)
-library(NatParksPalettes) # colors
+#library(variancePartition)
+#library(NatParksPalettes) # colors
 library(cowplot)
 
 #----------------- Define variables
