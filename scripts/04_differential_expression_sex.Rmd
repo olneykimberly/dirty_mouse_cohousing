@@ -1,23 +1,30 @@
 ---
 title: "Differential expression - co-houseing mouse mRNA"
 author: "Kimberly Olney, PhD"
-date: "February 2026"
+date: "April 2026"
 output:
   pdf_document: default
 params:
   project: CH
 ---
 
-Compare clean, bedding, co-housed by sex
+Within each sex
+Bulk RNASeq for Co-housed C57Bl/6J mouse Brains 
+Compare clean, bedding, co-housed. 
+
+The naming scheme for sample names in this project is as follows:
+Clean or Bedding or Cohoused (C or B or Ch)
+Male or female (M or F)
+B for Brain (in all sample names)
+Sample number (1-8)
 
 # Set up working enivornment
 ```{r setup, include=FALSE}
 knitr::opts_knit$set(root.dir = ".")
-getwd()
 ```
 
 ```{r libraries, message=FALSE, warning=FALSE}
-source("/tgen_labs/jfryer/kolney/dirty_mice/dirty_mouse_cohousing/scripts/file_paths_and_colours.R")
+source("scripts/file_paths_and_colours.R")
 projectID <- "CH"
 ```
 
@@ -27,7 +34,7 @@ This is the raw counts
 # path to counts files
 count_files <-
   file.path(paste0(
-    "/tgen_labs/jfryer/kolney/dirty_mice/dirty_mouse_cohousing/starAligned/",
+    "starAligned/",
     metadata$sample, "_STAR.bam", #  "_", metadata$group,"
     typeOfCount
   ))
@@ -77,7 +84,7 @@ genes <- read.delim("scripts/ensembl_mouse_genes.txt")
 # Check inputs
 ```{r check_inputs}
 all.equal(rownames(count_data), genes$gene_id) # gene ids match the count rows
-all.equal(colnames(count_data), (metadata$sample)) # counts columns match the sample IDs
+all.equal(colnames(count_data), as.character(metadata$sample)) # counts columns match the sample IDs
 ```
 
 # Create DGE object
@@ -155,7 +162,6 @@ plotMDS(
 title(expression('Top 500 Genes - Raw (Log'[2] ~ 'CPM)'))
 saveToPDF(paste0("results_", projectID, "/sex_stratified/MDS/MDS_male.pdf"), width = 6, height = 6)
 ```
-
 
 # Remove mitochondrial genes
 ```{r MT_genes}
@@ -276,18 +282,54 @@ normfactors <- (dge.filtered.norm.male$samples$norm.factors)
 # Gene_id to gene_name
 Some of the gene_names are duplicated. Our counts matrix has rownames by gene_id which are not duplicated. Since we have now filtered and normalized we can check to see if duplicated gene_names still exist.  If none do, rename rows to gene_name.  If there are duplicates, handle the error and then rename columns.
 ```{r gene_name}
-# check for duplication
+library(dplyr)
+
+# 1. First, ensure NA gene_names are replaced by gene_id across all objects
+dge.filtered.norm$genes <- dge.filtered.norm$genes %>% 
+  mutate(gene_name = coalesce(gene_name, gene_id))
+
+dge.filtered.norm.female$genes <- dge.filtered.norm.female$genes %>% 
+  mutate(gene_name = coalesce(gene_name, gene_id))
+
+dge.filtered.norm.male$genes <- dge.filtered.norm.male$genes %>% 
+  mutate(gene_name = coalesce(gene_name, gene_id))
+
+# 2. Function to replace duplicates with gene_id
+# Logic: If a gene_name is duplicated (either the first or subsequent occurrences), use gene_id
+resolve_duplicate_names <- function(df) {
+  df %>%
+    group_by(gene_name) %>%
+    mutate(gene_name = if(n() > 1) gene_id else gene_name) %>%
+    ungroup()
+}
+
+# 3. Apply the resolution logic to each DGE object
+dge.filtered.norm$genes        <- resolve_duplicate_names(dge.filtered.norm$genes)
+dge.filtered.norm.female$genes <- resolve_duplicate_names(dge.filtered.norm.female$genes)
+dge.filtered.norm.male$genes   <- resolve_duplicate_names(dge.filtered.norm.male$genes)
+
+# 4. Final verification
+# This stops execution if any duplicates remain
+stopifnot(
+  !any(duplicated(dge.filtered.norm$genes$gene_name)),
+  !any(duplicated(dge.filtered.norm.female$genes$gene_name)),
+  !any(duplicated(dge.filtered.norm.male$genes$gene_name))
+)
+
+# 5. Check duplication tables
+print("Main DGE Duplicates:")
 table(duplicated(dge.filtered.norm$genes$gene_name))
+
+print("Female DGE Duplicates:")
 table(duplicated(dge.filtered.norm.female$genes$gene_name))
+
+print("Male DGE Duplicates:")
 table(duplicated(dge.filtered.norm.male$genes$gene_name))
 
-# replace NA with gene_id 
-dge.filtered.norm$genes <- dge.filtered.norm$genes %>% mutate(gene_name = coalesce(gene_name,gene_id))
-dge.filtered.norm.female$genes <- dge.filtered.norm.female$genes %>% mutate(gene_name = coalesce(gene_name,gene_id))
-dge.filtered.norm.male$genes <- dge.filtered.norm.male$genes %>% mutate(gene_name = coalesce(gene_name,gene_id))
-
-# check for duplication
-table(duplicated(dge.filtered.norm$genes$gene_name))
+# 6. Set Row Names to the newly unique gene_names
+rownames(dge.filtered.norm)        <- dge.filtered.norm$genes$gene_name
+rownames(dge.filtered.norm.female) <- dge.filtered.norm.female$genes$gene_name
+rownames(dge.filtered.norm.male)   <- dge.filtered.norm.male$genes$gene_name
 ```
 
 # Clean up
@@ -347,7 +389,6 @@ plotMDS(
 title(expression('Top 500 Genes - Filtered (Log'[2] ~ 'CPM)'))
 saveToPDF(paste0("results_", projectID, "/sex_stratified/MDS/MDS_filtered_condition_male.pdf"), width = 6, height = 6)
 ```
-
 
 # Voom 
 voom transform counts to use for variancePartition  
@@ -419,7 +460,6 @@ variance_explained_male <- merge(varPart_male, genes, by = "gene_id")
 write.table(variance_explained_male, paste0("results_", projectID, "/sex_stratified/variance/variance_explained_male.tsv"),sep = "\t", quote = FALSE, row.names = FALSE)
 ```
 
-
 # CCA 
 Canonical Correlation Analysis
 ```{r}
@@ -445,7 +485,13 @@ rm(form, C)
 info_female <- dge.filtered.norm.female$samples
 p <- info_female %>%
     ggplot(aes(x = group, y = RIN, fill = group)) +
-    geom_boxplot() +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(width = 0.2, size = 2, alpha = 0.7) +  # show all points
+    geom_text_repel(
+    aes(label = sample),  
+    size = 3,
+    max.overlaps = 50
+  ) +
     labs(
       title = paste("RIN - female"),
       x = "Experimental Group",
@@ -465,7 +511,13 @@ saveToPDF(paste0("results_", projectID, "/sex_stratified/variance/RIN_female.pdf
 info_male <- dge.filtered.norm.male$samples
 p <- info_male %>%
     ggplot(aes(x = group, y = RIN, fill = group)) +
-    geom_boxplot() +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(width = 0.2, size = 2, alpha = 0.7) +  # show all points
+    geom_text_repel(
+    aes(label = sample),  
+    size = 3,
+    max.overlaps = 50
+  ) +
     labs(
       title = paste("RIN - male"),
       x = "Experimental Group",
@@ -566,7 +618,7 @@ plotSA(veBayesFit_male, main = "Final Model: Mean-variance Trend")
 # DEGs summary
 ```{r DGE_summary}
 qval <- 0.05
-lfc.cutoff <- 0
+lfc.cutoff <- 0.25
 
 sumTable_female <- 
   summary(decideTests(
@@ -643,6 +695,33 @@ pheatmap::pheatmap(df,
                    angle_col = "0",
                    breaks = c(seq(0, 500, length.out = length(rev(natparks.pals("WindCave"))))))
 dev.off()
+```
+
+# Bidirectional DEG plot
+```{r}
+outdir <- paste0("results_", projectID, "/sex_stratified/DEGs")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
+df_female <- as.data.frame(sumTable_female)
+p_female <- make_bidirectional_deg_plot(
+  df = df_female,
+  sex_label = "Female",
+  qval = qval,
+  lfc.cutoff = lfc.cutoff,
+  outdir = outdir
+)
+p_female
+
+
+df_male <- as.data.frame(sumTable_male)
+p_male <- make_bidirectional_deg_plot(
+  df = df_male,
+  sex_label = "Male",
+  qval = qval,
+  lfc.cutoff = lfc.cutoff,
+  outdir = outdir
+)
+p_male
 ```
 
 # Output DEG tables
@@ -782,11 +861,11 @@ ggplot(data = pcaWithMetadata, aes(x = PC1, y = PC2, shape = group, color = grou
 saveToPDF(paste0("results_", projectID, "/sex_stratified/PCA/PCA_dim1&2_male.pdf"), width = 6, height = 5)
 ```
 
-
 # Volcano plots
+male
 ```{r volcano, warning=FALSE}
-negFC <- 0
-posFC <- 0
+negFC <- -0.25
+posFC <- 0.25
 for (i in allComparisons) {
   group1_vs_group2 <-
     read.delim(paste0("results_", projectID, "/sex_stratified/DEGs/", i,"_q1.00_male.txt"))
@@ -859,8 +938,8 @@ for (i in allComparisons) {
     }
     hadjpval <- (-log10(max(data$P.Value[data$adj.P.Val < qval],
                             na.rm = TRUE)))
-    negFC <- c(0)
-    posFC <- c(0) 
+    negFC <- c(-0.25)
+    posFC <- c(0.25) 
     p <-
       ggplot(data = data,
              aes(
@@ -900,7 +979,7 @@ for (i in allComparisons) {
         color = "maroon",
         fontface = "italic",
         size = 3,
-        max.overlaps = getOption("ggrepel.max.overlaps", default = 10)
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 5)
       ) +
       geom_text_repel(
         data = upFold,
@@ -924,7 +1003,7 @@ for (i in allComparisons) {
         color = "navyblue",
         fontface = "italic",
         size = 3,
-        max.overlaps = getOption("ggrepel.max.overlaps", default = 10)
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 5)
       ) +
       geom_text_repel(
         data = downFold,
@@ -954,7 +1033,560 @@ for (i in allComparisons) {
 }
 ```
 
+female
+```{r}
+negFC <- -0.25
+posFC <- 0.25
+for (i in allComparisons) {
+  group1_vs_group2 <-
+    read.delim(paste0("results_", projectID, "/sex_stratified/DEGs/", i,"_q1.00_female.txt"))
+    i <- gsub("_", " ", i)
+    if (!any(group1_vs_group2$adj.P.Val < qval, na.rm = TRUE)) {
+    # If there are no significant DEGs, create a volcano plot with all points in gray
+    p <- ggplot(data = group1_vs_group2, aes(x = logFC, y = -log10(P.Value))) +
+      geom_point(alpha = 0.8, size = 2, color = "gray") +
+      theme_bw() +
+      theme(legend.position = "none",
+            axis.title.x = element_text(size = 10),
+            axis.text.x = element_text(size = 10),
+            axis.title.y = element_text(size = 10),
+            axis.text.y = element_text(size = 10)) +
+      geom_vline(xintercept = negFC,
+                 colour = "#000000",
+                 linetype = "dashed") +
+      geom_vline(xintercept = posFC,
+                 colour = "#000000",
+                 linetype = "dashed") +
+      labs(x = expression(log[2](FC)),
+           y = expression(-log[10] ~ "(" ~ italic("p") ~ "-value)")) +
+      ggtitle(paste0(i, "\nNo significant DEGs found - female"))
+    i <- gsub(" ", "_", i)
+    pdf(paste0("results_", projectID, "/sex_stratified/volcano/", i, "_female.pdf"), height = 6, width = 6)
+    print(p)
+    dev.off()
+  } else {
+  color_values <- vector()
+  max <- nrow(group1_vs_group2)
+  for (row in 1:max) {
+    if (group1_vs_group2$adj.P.Val[row] < qval) {
+      if (group1_vs_group2$logFC [row] > posFC) {
+        color_values <- c(color_values, 1)
+      }
+      else if (group1_vs_group2$logFC[row] < negFC) {
+        color_values <- c(color_values, 2)
+      }
+      else {
+        color_values <- c(color_values, 3)
+      }
+    }
+    else{
+      color_values <- c(color_values, 3)
+    }
+  }
+  group1_vs_group2$color_adjpval_0.05 <- factor(color_values)
+  data <- group1_vs_group2
+  # plot only if there are DEGs with p_val_adj < 0.05
+  num <- subset(data, (adj.P.Val < qval & logFC < negFC)  | (adj.P.Val < qval & logFC > posFC ))
+  num <- nrow(num)
+  if (num != 0) {
+    up <- data[data$color_adjpval_0.05 == 1,]
+    up10 <- up[1:10,]
+    upFold <- subset(up, logFC > posFC)
+    upFold <- upFold[!(upFold$gene_name %in% up10$gene_name),]
+    down <- data[data$color_adjpval_0.05 == 2,]
+    down10 <- down[1:10,]
+    downFold <- subset(down, logFC < negFC)
+    downFold <- downFold[!(downFold$gene_name %in% down10$gene_name),]
+    if (!1 %in% unique(data$color_adjpval_0.05)) {
+      my_colors <- c("blue", "gray")
+    } else if (!2 %in% unique(data$color_adjpval_0.05)) {
+      my_colors <- c("red", "gray")
+    } else if (!1 %in% unique(data$color_adjpval_0.05) &&
+               !2 %in% unique(data$color_adjpval_0.05)) {
+      my_colors <- c("gray")
+    } else {
+      my_colors <- c("red", "blue", "gray")
+    }
+    hadjpval <- (-log10(max(data$P.Value[data$adj.P.Val < qval],
+                            na.rm = TRUE)))
+    negFC <- c(-0.25)
+    posFC <- c(0.25) 
+    p <-
+      ggplot(data = data,
+             aes(
+               x = logFC,
+               y = -log10(P.Value),
+               color = color_adjpval_0.05
+             )) +
+      geom_point(alpha = 0.8, size = 1) +
+      theme_bw() +
+      theme(legend.position = "none") +
+      scale_color_manual(values = my_colors) +
+      labs(
+        title = "",
+        x = expression(log[2](FC)),
+        y = expression(-log[10] ~ "(" ~ italic("p") ~ "-value)")
+      )  +
+      geom_hline(yintercept = hadjpval,
+                 #  horizontal line
+                 colour = "#000000",
+                 linetype = "dashed") +
+      geom_vline(xintercept = negFC,
+                 #  horizontal line
+                 colour = "#000000",
+                 linetype = "dashed") +
+      geom_vline(xintercept = posFC,
+                 #  horizontal line
+                 colour = "#000000",
+                 linetype = "dashed") +
+      ggtitle(paste0(i, " female", "\nq < ", qval, " & |log2FC| > ", lfc.cutoff)) + # 
+      geom_text_repel(
+        data = up10,
+        aes(
+          x = logFC,
+          y = -log10(P.Value),
+          label = gene_name
+        ),
+        color = "maroon",
+        fontface = "italic",
+        size = 3,
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 5)
+      ) +
+      geom_text_repel(
+        data = upFold,
+        aes(
+          x = logFC,
+          y = -log10(P.Value),
+          label = gene_name
+        ),
+        color = "maroon",
+        fontface = "italic",
+        size = 3,
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 10)
+      ) +
+      geom_text_repel(
+        data = down10,
+        aes(
+          x = logFC,
+          y = -log10(P.Value),
+          label = gene_name
+        ),
+        color = "navyblue",
+        fontface = "italic",
+        size = 3,
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 5)
+      ) +
+      geom_text_repel(
+        data = downFold,
+        aes(
+          x = logFC,
+          y = -log10(P.Value),
+          label = gene_name
+        ),
+        color = "navyblue",
+        fontface = "italic",
+        size = 3,
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 10)
+      )
+    p
+    i <- gsub(" ", "_", i)
+    # save
+    path <-paste0("results_", projectID, "/sex_stratified/volcano/",i)
+    pdf(paste0(path, "_female.pdf"),
+        height = 6,
+        width = 6)
+    print(p)
+    dev.off()
+    
+    print(paste("i =", i))
+  }
+  } 
+}
+```
+
+
 ```{r cleanup}
 # clean up
 remove(up, up10, upFold, group1_vs_group2, downFold, down10, data, p, my_colors)
+```
+
+# Make excel table
+```{r}
+outdir <- paste0("results_", projectID, "/sex_stratified/DEGs")
+
+list_of_datasets_female <- list()
+for (i in allComparisons) {
+  filepath <- paste0(
+    outdir, "/",
+    i, "_q1.00_female.txt"
+  )
+  df <- read.delim(
+    filepath,
+    header = TRUE,
+    sep = "\t",
+    stringsAsFactors = FALSE
+  )
+  sheet_name <- gsub("_", " ", i)
+  list_of_datasets_female[[sheet_name]] <- df
+}
+write.xlsx(
+  x = list_of_datasets_female,
+  file = paste0(outdir, "/DEGs.q1.00.female.xlsx"),
+  overwrite = TRUE
+)
+
+
+list_of_datasets_male <- list()
+for (i in allComparisons) {
+  filepath <- paste0(
+    outdir, "/",
+    i, "_q1.00_male.txt"
+  )
+  
+  df <- read.delim(
+    filepath,
+    header = TRUE,
+    sep = "\t",
+    stringsAsFactors = FALSE
+  )
+  
+  sheet_name <- gsub("_", " ", i)
+  list_of_datasets_male[[sheet_name]] <- df
+}
+
+write.xlsx(
+  x = list_of_datasets_male,
+  file = paste0(outdir, "/DEGs.q1.00.male.xlsx"),
+  overwrite = TRUE
+)
+```
+
+# Master DEG table
+```{r}
+# Columns:
+df_list <- list()
+
+base_path <- paste0("results_", projectID, "/sex_stratified/DEGs/")
+sexes <- c("male", "female")
+
+for (comparison_name in allComparisons) {
+  for (sex in sexes) {
+    file_path <- paste0(base_path, comparison_name, "_q1.00_", sex, ".txt")
+    if (!file.exists(file_path)) {
+      message("Skipping missing file: ", file_path)
+      next
+    }
+    temp_df <- read.delim(file_path)
+    comparison_string <- gsub("_", " ", comparison_name)
+    temp_df$comparison <- comparison_string
+    temp_df$sex <- sex
+    temp_df$comparison_sex <- paste0(sex, "_", comparison_name)
+    list_name <- paste0(sex, "_", comparison_name)
+    df_list[[list_name]] <- temp_df
+  }
+}
+
+df <- do.call(rbind, df_list)
+df <- df[, c(16, 4, 8:10, 14, 11, 13, 1, 3, 
+             which(colnames(df) %in% c("comparison", "sex", "comparison_sex")))]
+df <- df[order(df$gene_name), ]
+
+write.table(
+  df,
+  file = paste0("results_", projectID, "/sex_stratified/DEGs/DEGs_AllComparisons_sex_stratified.txt"),
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
+)
+```
+
+# Correlation log2FC
+```{r}
+sexes <- c("female", "male")
+
+deg_dir <- paste0("results_", projectID, "/sex_stratified/DEGs")
+out_dir <- file.path(deg_dir, "log2FC_correlations")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+within_pairs <- list(
+  c("Bedding_vs_Clean", "CH_vs_Clean"),
+  c("Bedding_vs_Clean", "CH_vs_Bedding"),
+  c("CH_vs_Clean", "CH_vs_Bedding")
+)
+
+#  Within-sex plots
+for (sex in sexes) {
+  message("Processing within-sex plots for: ", sex)
+  plots_this_sex <- list()
+  for (k in seq_along(within_pairs)) {
+    comp1 <- within_pairs[[k]][1]
+    comp2 <- within_pairs[[k]][2]
+
+    d1 <- read_deg_fc(deg_file(comp1, sex))
+    d2 <- read_deg_fc(deg_file(comp2, sex))
+
+    merged <- merge_fc(
+      d1, d2,
+      x_name = paste0(comp1, "_", sex),
+      y_name = paste0(comp2, "_", sex)
+    )
+
+    title_line1 <- paste0("log2FC correlation")
+    title_line2 <- paste0("Sex: ", sex)
+    title_line3 <- paste0(pretty_comp(comp1), " vs ", pretty_comp(comp2))
+
+    if (is.null(merged)) {
+      plots_this_sex[[k]] <- make_missing_plot(title_line1, title_line2, title_line3)
+    } else {
+
+      out_table <- file.path(
+        out_dir,
+        paste0("merged_log2FC_within_", sex, "_", comp1, "_vs_", comp2, ".tsv")
+      )
+      write.table(merged, file = out_table, sep = "\t", quote = FALSE, row.names = FALSE)
+
+      plots_this_sex[[k]] <- make_corr_plot(
+        merged,
+        title_line1 = title_line1,
+        title_line2 = title_line2,
+        title_line3 = title_line3,
+        x_lab = paste0("log2FC (", pretty_comp(comp1), ")"),
+        y_lab = paste0("log2FC (", pretty_comp(comp2), ")"),
+        n_discordant = 5,
+        n_concordant_each = 3
+      )
+    }
+  }
+
+  out_pdf <- file.path(out_dir, paste0("corr_log2FC_within_", sex, ".pdf"))
+  save_three_panel(
+    plots_this_sex[[1]],
+    plots_this_sex[[2]],
+    plots_this_sex[[3]],
+    out_pdf = out_pdf
+  )
+
+  message("Wrote: ", out_pdf)
+}
+
+# Same comparison across sexes
+message("Processing female vs male same-comparison plots")
+plots_between_sex <- list()
+for (k in seq_along(allComparisons)) {
+  comp <- allComparisons[[k]]
+
+  d_female <- read_deg_fc(deg_file(comp, "female"))
+  d_male   <- read_deg_fc(deg_file(comp, "male"))
+
+  merged <- merge_fc(
+    d_female, d_male,
+    x_name = paste0(comp, "_female"),
+    y_name = paste0(comp, "_male")
+  )
+
+  title_line1 <- paste0("log2FC correlation")
+  title_line2 <- "Sex: female vs male"
+  title_line3 <- pretty_comp(comp)
+
+  if (is.null(merged)) {
+    plots_between_sex[[k]] <- make_missing_plot(title_line1, title_line2, title_line3)
+  } else {
+
+    out_table <- file.path(
+      out_dir,
+      paste0("merged_log2FC_female_vs_male_", comp, ".tsv")
+    )
+    write.table(merged, file = out_table, sep = "\t", quote = FALSE, row.names = FALSE)
+
+    plots_between_sex[[k]] <- make_corr_plot(
+      merged,
+      title_line1 = title_line1,
+      title_line2 = title_line2,
+      title_line3 = title_line3,
+      x_lab = paste0("log2FC (", pretty_comp(comp), ", female)"),
+      y_lab = paste0("log2FC (", pretty_comp(comp), ", male)"),
+      n_discordant = 5,
+      n_concordant_each = 3
+    )
+  }
+}
+
+out_pdf_between <- file.path(out_dir, "corr_log2FC_female_vs_male_same_comparison.pdf")
+save_three_panel(
+  plots_between_sex[[1]],
+  plots_between_sex[[2]],
+  plots_between_sex[[3]],
+  out_pdf = out_pdf_between
+)
+
+message("Wrote: ", out_pdf_between)
+```
+
+# UpSET
+```{r}
+# =========================================================
+# Make UpSet plots of DEGs for each sex using ComplexUpset
+# Robust to:
+#   1) empty DEG sets
+#   2) no DEGs for one sex
+#   3) zero-count sets
+#   4) ComplexUpset + ggplot2 theme compatibility issues
+# =========================================================
+
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(ComplexUpset)
+})
+
+# ---------------------------------------------------------
+# Settings
+# ---------------------------------------------------------
+base_path <- paste0("results_", projectID, "/sex_stratified/DEGs/")
+outdir <- paste0("results_", projectID, "/sex_stratified/upset")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
+allComparisons <- c(
+  "Bedding_vs_Clean",
+  "CH_vs_Clean",
+  "CH_vs_Bedding"
+)
+
+# ---------------------------------------------------------
+# Function to make UpSet plot for one sex
+# ---------------------------------------------------------
+make_upset_by_sex <- function(sex_label) {
+  
+  # -----------------------------
+  # Read in DEG tables
+  # -----------------------------
+  deg_list <- list()
+  
+  for (i in allComparisons) {
+    file_path <- paste0(base_path, i, "_q1.00_", sex_label, ".txt")
+    
+    deg_list[[i]] <- read.delim(
+      file_path,
+      header = TRUE,
+      sep = "\t",
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }
+  
+  Bedding_vs_Clean <- deg_list[["Bedding_vs_Clean"]]
+  CH_vs_Clean      <- deg_list[["CH_vs_Clean"]]
+  CH_vs_Bedding    <- deg_list[["CH_vs_Bedding"]]
+  
+  # -----------------------------
+  # Filter DEGs
+  # q <= 0.05 and |logFC| > 0.25
+  # -----------------------------
+  Bedding_vs_Clean_up   <- subset(Bedding_vs_Clean, logFC >  0.25 & adj.P.Val <= 0.05)
+  Bedding_vs_Clean_down <- subset(Bedding_vs_Clean, logFC < -0.25 & adj.P.Val <= 0.05)
+  
+  CH_vs_Clean_up        <- subset(CH_vs_Clean,      logFC >  0.25 & adj.P.Val <= 0.05)
+  CH_vs_Clean_down      <- subset(CH_vs_Clean,      logFC < -0.25 & adj.P.Val <= 0.05)
+  
+  CH_vs_Bedding_up      <- subset(CH_vs_Bedding,    logFC >  0.25 & adj.P.Val <= 0.05)
+  CH_vs_Bedding_down    <- subset(CH_vs_Bedding,    logFC < -0.25 & adj.P.Val <= 0.05)
+  
+  # -----------------------------
+  # Build gene lists
+  # -----------------------------
+  list_input <- list(
+    "Bedding vs clean down-regulated" = Bedding_vs_Clean_down$gene_name,
+    "CH vs clean down-regulated"      = CH_vs_Clean_down$gene_name,
+    "CH vs bedding down-regulated"    = CH_vs_Bedding_down$gene_name,
+    "Bedding vs clean up-regulated"   = Bedding_vs_Clean_up$gene_name,
+    "CH vs clean up-regulated"        = CH_vs_Clean_up$gene_name,
+    "CH vs bedding up-regulated"      = CH_vs_Bedding_up$gene_name
+  )
+  
+  # clean each list
+  list_input <- lapply(list_input, function(x) {
+    x <- as.character(x)
+    unique(x[!is.na(x) & x != ""])
+  })
+  
+  set_order <- c(
+    "Bedding vs clean down-regulated",
+    "CH vs clean down-regulated",
+    "CH vs bedding down-regulated",
+    "Bedding vs clean up-regulated",
+    "CH vs clean up-regulated",
+    "CH vs bedding up-regulated"
+  )
+  
+  all_genes <- unique(unlist(list_input, use.names = FALSE))
+  
+  if (length(all_genes) == 0) {
+    message("No DEGs passed filter for sex: ", sex_label)
+    return(invisible(NULL))
+  }
+  
+  # -----------------------------
+  # Build binary matrix
+  # -----------------------------
+  data <- data.frame(
+    gene = all_genes,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  
+  for (nm in set_order) {
+    data[[nm]] <- all_genes %in% list_input[[nm]]
+  }
+  
+  data <- data[, c("gene", set_order), drop = FALSE]
+  
+  print(sex_label)
+  print(dim(data))
+  print(colnames(data))
+  print(colSums(data[, set_order, drop = FALSE]))
+  
+  # -----------------------------
+  # Save binary matrix
+  # -----------------------------
+  txt_file <- paste0(outdir, "/UpSet_list_binary_results_", sex_label, ".txt")
+  write.table(
+    data,
+    file = txt_file,
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+  
+  # -----------------------------
+  # Build plot
+  # -----------------------------
+  p <- ComplexUpset::upset(
+    data = data,
+    intersect = set_order,
+    name = paste0("DEGs_", sex_label),
+    sort_sets = FALSE,
+    sort_intersections_by = "cardinality",
+    base_annotations = list(
+      "Intersection size" = ComplexUpset::intersection_size(
+        text = list(size = 3)
+      )
+    ),
+    set_sizes = ComplexUpset::upset_set_size()
+  )
+  
+  # -----------------------------
+  # Save plot
+  # -----------------------------
+  pdf_file <- paste0(outdir, "/UpSet_DEGs_q0.05_", sex_label, ".pdf")
+  pdf(pdf_file, width = 8, height = 5)
+  print(p)
+  dev.off()
+  
+  message("Saved UpSet plot and binary table for: ", sex_label)
+}
+
+# ---------------------------------------------------------
+# Run for female and male
+# ---------------------------------------------------------
+make_upset_by_sex("female")
+make_upset_by_sex("male")
 ```
