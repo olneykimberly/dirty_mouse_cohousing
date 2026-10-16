@@ -15,3 +15,12 @@ results_CH/*
 rObjects/*
 scripts/shiny/*
 .DS_Store
+UpSet_CH_clean_bedding.pdf
+deploy_app
+scripts/shiny/resconnect/*/*
+scripts/shiny/filtered*
+scripts/shiny/filtered_cpm_gene_names.txt
+dirty_mouse_cohousing.Rproj
+scripts/shiny/DEGs_AllComparisons.txt
+scripts/shiny/filtered_cpm_gene_names.txt
+scripts/shiny/rsconnect/shinyapps.io/fryerlab/dirty_mice_cohousing.dcf
