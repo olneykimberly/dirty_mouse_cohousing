@@ -21,6 +21,7 @@ library(variancePartition)
 library(cowplot)
 library(UpSetR)
 library(ComplexUpset)
+library(gridExtra)
 
 #----------------- Create folder outputs
 # Create directory structure if it doesn't exist
@@ -149,43 +150,41 @@ fix_gene_names <- function(dge) {
 # -----------------------------
 make_bidirectional_deg_plot <- function(df, sex_label, qval, lfc.cutoff, outdir) {
   
-  # make sure input is a data frame
   df <- as.data.frame(df)
   
-  # add missing columns if needed
-  if (!"Down" %in% colnames(df)) df$Down <- 0
-  if (!"Up" %in% colnames(df)) df$Up <- 0
-  
-  # keep only Down and Up in the correct order
-  df <- df[, c("Down", "Up"), drop = FALSE]
-  
-  # make rownames exist
-  if (is.null(rownames(df))) {
-    stop("Input df must have row names corresponding to comparisons.")
-  }
-  
+  # Convert long table format to plotting format
   df_plot <- df %>%
-    rownames_to_column(var = "comparison") %>%
-    pivot_longer(
-      cols = c("Down", "Up"),
-      names_to = "Direction",
-      values_to = "n"
+    dplyr::rename(
+      Direction = Var1,
+      comparison = Var2,
+      n = Freq
     ) %>%
-    mutate(
+    dplyr::filter(Direction %in% c("Down", "Up")) %>%
+    dplyr::mutate(
+      Direction = factor(Direction, levels = c("Down", "Up")),
       n = as.numeric(n),
       n_plot = ifelse(Direction == "Down", -n, n),
-      comparison = factor(comparison, levels = rev(rownames(df)))
+      comparison = factor(
+        comparison,
+        levels = rev(c(
+          "Bedding_vs_Clean",
+          "CH_vs_Clean",
+          "CH_vs_Bedding"
+        ))
+      )
     )
   
   max_n <- max(abs(df_plot$n_plot), na.rm = TRUE)
-  x_lim <- max_n * 1.25
+  x_lim <- max_n * 1.75
   
   p <- ggplot(df_plot, aes(x = comparison, y = n_plot, fill = Direction)) +
     geom_col(width = 0.7) +
     geom_text(
-      aes(label = n),
-      hjust = ifelse(df_plot$n_plot > 0, -0.15, 1.15),
-      size = 3
+      aes(
+        label = n,
+        hjust = ifelse(n_plot > 0, -0.15, 1.15)
+      ),
+      size = 2.5
     ) +
     coord_flip() +
     geom_hline(yintercept = 0, color = "black", linewidth = 0.4) +
@@ -196,32 +195,53 @@ make_bidirectional_deg_plot <- function(df, sex_label, qval, lfc.cutoff, outdir)
       expand = expansion(mult = c(0.02, 0.02))
     ) +
     labs(
-      title = paste0("Number of DEGs - ", sex_label, "\nq < ", qval, " & |log2FC| > ", lfc.cutoff),
+      title = paste0(
+        "Number of DEGs - ", sex_label,
+        "\nq < ", qval,
+        " & |log2FC| > ", lfc.cutoff
+      ),
       x = "",
       y = "Number of DEGs"
     ) +
-    theme_minimal() +
-    theme(
-      legend.position = "bottom",
-      legend.title = element_blank(),
-      plot.title = element_text(hjust = 0.5),
-      axis.text = element_text(size = 10),
-      axis.title = element_text(size = 10)
-    )
-  
+    theme_classic() +
+theme(
+  legend.position = "bottom",
+  legend.title = element_blank(),
+  legend.box.spacing = unit(0, "cm"),
+legend.margin = margin(t = 0.5),
+plot.margin = margin(5, 5, 2, 5),
+
+  # smaller legend
+  legend.text = element_text(size = 6),
+  legend.key.size = unit(0.3, "cm"),
+
+  # title size
+  plot.title = element_text(
+    hjust = 0.5,
+    size = 9
+  ),
+
+  # axis text + titles
+  axis.text = element_text(size = 8),
+  axis.title = element_text(size = 8)
+) +scale_y_continuous(
+  limits = c(-x_lim, x_lim),
+  breaks = c(-1000, 0, 1000),
+  labels = c("1000", "0", "1000"),
+  expand = expansion(mult = c(0.02, 0.02))
+)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   
   pdf(
     file = paste0(outdir, "/DEGs_bidirectional_", tolower(sex_label), ".pdf"),
-    width = 6,
-    height = 5
+    width = 2.7,
+    height = 2.1
   )
   print(p)
   dev.off()
   
   return(p)
 }
-
 pretty_comp <- function(x) {
   gsub("_", " ", x)
 }
@@ -384,7 +404,7 @@ make_corr_plot <- function(df,
       p <- p + ggrepel::geom_text_repel(
         data = conc_df,
         aes(label = gene),
-        size = 8 / ggplot2::.pt,
+        size = 6.5 / ggplot2::.pt,
         color = "black",
         min.segment.length = 0,
         box.padding = 0.2,
@@ -395,7 +415,7 @@ make_corr_plot <- function(df,
       p <- p + geom_text(
         data = conc_df,
         aes(label = gene),
-        size = 8 / ggplot2::.pt,
+        size = 6.5 / ggplot2::.pt,
         color = "black",
         vjust = -0.6
       )
@@ -435,7 +455,7 @@ make_missing_plot <- function(title_line1, title_line2, title_line3, msg = "Miss
     theme(plot.title = element_text(size = 9, face = "plain", lineheight = 1.05))
 }
 
-save_three_panel <- function(p1, p2, p3, out_pdf, width = 13.5, height = 4.2) {
+save_three_panel <- function(p1, p2, p3, out_pdf, width = 10, height = 3) {
   if (requireNamespace("patchwork", quietly = TRUE)) {
     comb <- p1 + p2 + p3 + patchwork::plot_layout(nrow = 1)
     ggsave(out_pdf, comb, width = width, height = height)

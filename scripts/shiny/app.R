@@ -1,3 +1,4 @@
+#.libPaths(c("/home/kolney/R/x86_64-pc-linux-gnu-library", "/opt/R/4.5.2/lib/R/library"))
 library(shiny)
 library(ggplot2)
 library(dplyr)
@@ -12,7 +13,7 @@ library(stringr)
 # 1. GLOBAL CONFIGURATION AND DATA LOADING
 # ---------------------------------------------------------
 
-# setwd("/tgen_labs/jfryer/kolney/dirty_mice/dirty_mouse_cohousing/scripts/shiny")
+#setwd("/tgen_labs/jfryer/kolney/dirty_mice/dirty_mouse_cohousing/scripts/shiny")
 
 projectID <- "CH"
 comparisons_list <- c("CH_vs_Bedding", "Bedding_vs_Clean", "CH_vs_Clean")
@@ -29,7 +30,7 @@ clrs2 <- colorRampPalette(c("green", "lightgreen", "white"))(length(brks2) + 1)
 # ---------------------------------------------------------
 metadata <- read.delim("metadata.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 
-# Standardize sex column
+# Standardize sex column (metadata has F / M)
 if ("sex" %in% colnames(metadata)) {
   metadata$sex <- toupper(trimws(as.character(metadata$sex)))
 } else if ("Sex" %in% colnames(metadata)) {
@@ -50,9 +51,7 @@ if (any(is.na(metadata$sex))) {
 
 # Standardize group ordering
 metadata <- metadata %>%
-  mutate(
-    group = factor(group, levels = c("Clean", "Bedding", "CH"))
-  ) %>%
+  mutate(group = factor(group, levels = c("Clean", "Bedding", "CH"))) %>%
   arrange(group)
 
 metadata$sample <- factor(metadata$sample, levels = unique(metadata$sample))
@@ -90,10 +89,10 @@ DEGs_sex <- DEGs_sex_raw %>%
     comparison = gsub(" ", "_", comparison),
     comparison = as.character(comparison),
     sex = case_when(
-  toupper(trimws(as.character(sex))) %in% c("M", "MALE") ~ "male",
-  toupper(trimws(as.character(sex))) %in% c("F", "FEMALE") ~ "female",
-  TRUE ~ tolower(trimws(as.character(sex)))
-),
+      toupper(trimws(as.character(sex))) %in% c("M", "MALE") ~ "male",
+      toupper(trimws(as.character(sex))) %in% c("F", "FEMALE") ~ "female",
+      TRUE ~ tolower(trimws(as.character(sex)))
+    ),
     gene_name = as.character(gene_name),
     gene_id = as.character(gene_id),
     logFC = as.numeric(logFC),
@@ -103,24 +102,20 @@ DEGs_sex <- DEGs_sex_raw %>%
   ) %>%
   filter(!is.na(logFC), !is.na(P.Value), !is.na(adj.P.Val))
 
-# For DEG table tab, keep one combined table that includes both + sex-stratified
+# Combined table for DEG tab
 DEGs_table <- bind_rows(
   DEGs_all %>% mutate(analysis = "both"),
   DEGs_sex %>% mutate(analysis = "sex_stratified")
 )
 
 # ---------------------------------------------------------
-# Read CPM tables
+# Read CPM table
+# IMPORTANT: use only the full CPM matrix, then subset by sex
 # ---------------------------------------------------------
 cpm_full_all <- read.delim("filtered_cpm_gene_names.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-cpm_full_male <- read.delim("filtered_cpm_male_gene_names.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
-cpm_full_female <- read.delim("filtered_cpm_female_gene_names.txt", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 
 # Gene options
-gene_options <- sort(unique(c(
-  DEGs_all$gene_name,
-  DEGs_sex$gene_name
-)))
+gene_options <- sort(unique(c(DEGs_all$gene_name, DEGs_sex$gene_name)))
 gene_options <- gene_options[!is.na(gene_options) & gene_options != ""]
 
 # ---------------------------------------------------------
@@ -135,12 +130,12 @@ get_deg_dataset <- function(sex_choice, DEGs_all, DEGs_sex) {
   }
 }
 
-safe_hadjpval <- function(data, qval_fixed = 0.05) {
+get_hadjpval <- function(data, qval_fixed = 0.05) {
   sig_pvals <- data$P.Value[data$adj.P.Val < qval_fixed & !is.na(data$P.Value)]
   sig_pvals <- sig_pvals[sig_pvals > 0]
   
   if (length(sig_pvals) == 0) {
-    return(-log10(qval_fixed))
+    return(NA_real_)
   } else {
     return(-log10(max(sig_pvals, na.rm = TRUE)))
   }
@@ -165,14 +160,18 @@ load_gene_counts <- function(gene_name, metadata, cpm_full, sex_subset = NULL) {
     select(-all_of(exclude_cols)) %>%
     pivot_longer(cols = everything(), names_to = "sample", values_to = "cpm")
   
+  sample_cpm$sample <- as.character(sample_cpm$sample)
+  metadata2 <- metadata
+  metadata2$sample <- as.character(metadata2$sample)
+  
   data_cpm <- sample_cpm %>%
-    left_join(metadata, by = "sample")
+    left_join(metadata2, by = "sample")
   
   data_cpm$gene_name <- gene_name
   data_cpm$cpm <- as.numeric(data_cpm$cpm)
   
   if (!is.null(sex_subset)) {
-    data_cpm <- data_cpm %>% filter(tolower(sex) == tolower(sex_subset))
+    data_cpm <- data_cpm %>% filter(sex == sex_subset)
   }
   
   data_cpm <- data_cpm %>%
@@ -183,8 +182,8 @@ load_gene_counts <- function(gene_name, metadata, cpm_full, sex_subset = NULL) {
   }
   
   data_cpm$group <- factor(data_cpm$group, levels = c("Clean", "Bedding", "CH"))
-  data_cpm <- data_cpm %>% arrange(group)
-  data_cpm$sample <- factor(data_cpm$sample, levels = unique(as.character(data_cpm$sample)))
+  data_cpm <- data_cpm %>% arrange(group, sample)
+  data_cpm$sample <- factor(data_cpm$sample, levels = unique(data_cpm$sample))
   
   return(data_cpm %>% select(sample, cpm, gene_name, group, sex))
 }
@@ -304,13 +303,30 @@ ui <- fluidPage(
             selected = "both"
           ),
           
+          numericInput(
+            "volcano_qval",
+            "q-value cutoff:",
+            value = 0.05,
+            min = 0,
+            max = 1,
+            step = 0.001
+          ),
+          
+          numericInput(
+            "volcano_lfc",
+            "|log2FC| cutoff:",
+            value = 0.0,
+            min = 0,
+            step = 0.05
+          ),
+          
           uiOutput("gene_name_selector_volcano"),
           
           hr(),
-          tags$b("Significance threshold:"),
+          tags$b("Current significance threshold:"),
           tags$ul(
-            tags$li("q-value < 0.05"),
-            tags$li("|Log2FC| > 0.0")
+            tags$li(textOutput("qval_display")),
+            tags$li(textOutput("lfc_display"))
           )
         ),
         
@@ -393,11 +409,18 @@ ui <- fluidPage(
             h4("All samples"),
             plotlyOutput(outputId = "counts_overall", height = "650px"),
             br(),
-            h4("Male"),
-            plotlyOutput(outputId = "counts_male", height = "650px"),
-            br(),
-            h4("Female"),
-            plotlyOutput(outputId = "counts_female", height = "650px")
+            fluidRow(
+              column(
+                width = 6,
+                h4("Male"),
+                plotlyOutput(outputId = "counts_male", height = "650px")
+              ),
+              column(
+                width = 6,
+                h4("Female"),
+                plotlyOutput(outputId = "counts_female", height = "650px")
+              )
+            )
           )
         )
       )
@@ -417,10 +440,16 @@ server <- function(input, output, session) {
       DEGs_sex = DEGs_sex,
       DEGs_table = DEGs_table,
       metadata = metadata,
-      cpm_full_all = cpm_full_all,
-      cpm_full_male = cpm_full_male,
-      cpm_full_female = cpm_full_female
+      cpm_full_all = cpm_full_all
     )
+  })
+  
+  output$qval_display <- renderText({
+    paste0("q-value < ", input$volcano_qval)
+  })
+  
+  output$lfc_display <- renderText({
+    paste0("|log2FC| > ", input$volcano_lfc)
   })
   
   # -----------------------------------------------------
@@ -440,8 +469,8 @@ server <- function(input, output, session) {
     
     req(nrow(dat) > 0)
     
-    qval_fixed <- 0.05
-    lfc_cutoff_fixed <- 0.0
+    qval_fixed <- input$volcano_qval
+    lfc_cutoff_fixed <- input$volcano_lfc
     
     dat <- dat %>%
       mutate(
@@ -500,9 +529,9 @@ server <- function(input, output, session) {
     
     req(nrow(data) > 0)
     
-    qval_fixed <- 0.05
-    lfc_cutoff_fixed <- 0.0
-    hadjpval <- safe_hadjpval(data, qval_fixed = qval_fixed)
+    qval_fixed <- input$volcano_qval
+    lfc_cutoff_fixed <- input$volcano_lfc
+    hadjpval <- get_hadjpval(data, qval_fixed = qval_fixed)
     
     data <- data %>%
       mutate(
@@ -528,13 +557,23 @@ server <- function(input, output, session) {
         aes(color = Expression),
         size = 1,
         alpha = 0.6
-      ) +
-      geom_hline(yintercept = hadjpval, colour = "black", linetype = "dashed") +
-      geom_vline(
+      )
+    
+    # only add horizontal q-value line if at least one DEG passes q-value cutoff
+    if (!is.na(hadjpval)) {
+      p <- p + geom_hline(yintercept = hadjpval, colour = "black", linetype = "dashed")
+    }
+    
+    # add vertical fold-change cutoffs only if cutoff > 0
+    if (lfc_cutoff_fixed > 0) {
+      p <- p + geom_vline(
         xintercept = c(lfc_cutoff_fixed, -lfc_cutoff_fixed),
         colour = "black",
         linetype = "dashed"
-      ) +
+      )
+    }
+    
+    p <- p +
       geom_text(
         x = max_x,
         y = max_y * 0.95,
@@ -552,32 +591,30 @@ server <- function(input, output, session) {
         size = 5,
         hjust = 0,
         vjust = 1
-      ) +
-      {
-        if (input$selected_gene_name_volcano != "None" && any(data$is_selected)) {
-          geom_point(
-            data = filter(data, is_selected),
-            color = "black",
-            size = 4,
-            shape = 21,
-            stroke = 1.5,
-            fill = "gold"
-          )
-        }
-      } +
-      {
-        if (input$selected_gene_name_volcano != "None" && any(data$is_selected)) {
-          geom_text_repel(
-            data = filter(data, is_selected),
-            aes(label = gene_name),
-            box.padding = 0.5,
-            point.padding = 0.5,
-            size = 4,
-            color = "black",
-            fontface = "bold.italic"
-          )
-        }
-      } +
+      )
+    
+    if (input$selected_gene_name_volcano != "None" && any(data$is_selected)) {
+      p <- p +
+        geom_point(
+          data = filter(data, is_selected),
+          color = "black",
+          size = 4,
+          shape = 21,
+          stroke = 1.5,
+          fill = "gold"
+        ) +
+        geom_text_repel(
+          data = filter(data, is_selected),
+          aes(label = gene_name),
+          box.padding = 0.5,
+          point.padding = 0.5,
+          size = 4,
+          color = "black",
+          fontface = "bold.italic"
+        )
+    }
+    
+    p <- p +
       scale_color_manual(
         values = c(
           "Upregulated" = "red",
@@ -652,6 +689,7 @@ server <- function(input, output, session) {
   
   # -----------------------------------------------------
   # CPM counts plots
+  # IMPORTANT: all three use cpm_full_all
   # -----------------------------------------------------
   output$counts_overall <- renderPlotly({
     req(input$counts_labels)
@@ -674,7 +712,7 @@ server <- function(input, output, session) {
     dat <- load_gene_counts(
       gene_name = gene_name,
       metadata = data_objects()$metadata,
-      cpm_full = data_objects()$cpm_full_male,
+      cpm_full = data_objects()$cpm_full_all,
       sex_subset = "male"
     )
     
@@ -688,7 +726,7 @@ server <- function(input, output, session) {
     dat <- load_gene_counts(
       gene_name = gene_name,
       metadata = data_objects()$metadata,
-      cpm_full = data_objects()$cpm_full_female,
+      cpm_full = data_objects()$cpm_full_all,
       sex_subset = "female"
     )
     

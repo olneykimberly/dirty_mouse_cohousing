@@ -714,6 +714,7 @@ p_female
 
 
 df_male <- as.data.frame(sumTable_male)
+df_male
 p_male <- make_bidirectional_deg_plot(
   df = df_male,
   sex_label = "Male",
@@ -873,13 +874,14 @@ for (i in allComparisons) {
     if (!any(group1_vs_group2$adj.P.Val < qval, na.rm = TRUE)) {
     # If there are no significant DEGs, create a volcano plot with all points in gray
     p <- ggplot(data = group1_vs_group2, aes(x = logFC, y = -log10(P.Value))) +
-      geom_point(alpha = 0.8, size = 2, color = "gray") +
+      geom_point(alpha = 0.8, size = .75, color = "gray") +
       theme_bw() +
       theme(legend.position = "none",
-            axis.title.x = element_text(size = 10),
-            axis.text.x = element_text(size = 10),
-            axis.title.y = element_text(size = 10),
-            axis.text.y = element_text(size = 10)) +
+           plot.title = element_text(size = 9),
+            axis.title.x = element_text(size = 8),
+            axis.text.x = element_text(size = 8),
+            axis.title.y = element_text(size = 8),
+            axis.text.y = element_text(size = 8)) +
       geom_vline(xintercept = negFC,
                  colour = "#000000",
                  linetype = "dashed") +
@@ -888,9 +890,11 @@ for (i in allComparisons) {
                  linetype = "dashed") +
       labs(x = expression(log[2](FC)),
            y = expression(-log[10] ~ "(" ~ italic("p") ~ "-value)")) +
-      ggtitle(paste0(i, "\nNo significant DEGs found - male"))
+      ggtitle(paste0(i, "\nNo significant DEGs found - male")) +
+        scale_x_continuous(limits = c(-6.5, 6.5)) +
+        scale_y_continuous(limits = c(0, 8))
     i <- gsub(" ", "_", i)
-    pdf(paste0("results_", projectID, "/sex_stratified/volcano/", i, "_male.pdf"), height = 6, width = 6)
+    pdf(paste0("results_", projectID, "/sex_stratified/volcano/", i, "_male.pdf"), height = 2.08, width = 2.19)
     print(p)
     dev.off()
   } else {
@@ -947,9 +951,14 @@ for (i in allComparisons) {
                y = -log10(P.Value),
                color = color_adjpval_0.05
              )) +
-      geom_point(alpha = 0.8, size = 1) +
+      geom_point(alpha = 0.8, size = 0.75) +
       theme_bw() +
-      theme(legend.position = "none") +
+      theme(legend.position = "none", 
+            plot.title = element_text(size = 9),
+            axis.title.x = element_text(size = 8),
+            axis.text.x = element_text(size = 8),
+            axis.title.y = element_text(size = 8),
+            axis.text.y = element_text(size = 8)) +
       scale_color_manual(values = my_colors) +
       labs(
         title = "",
@@ -978,8 +987,8 @@ for (i in allComparisons) {
         ),
         color = "maroon",
         fontface = "italic",
-        size = 3,
-        max.overlaps = getOption("ggrepel.max.overlaps", default = 5)
+        size = 2,
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 10)
       ) +
       geom_text_repel(
         data = upFold,
@@ -990,8 +999,8 @@ for (i in allComparisons) {
         ),
         color = "maroon",
         fontface = "italic",
-        size = 3,
-        max.overlaps = getOption("ggrepel.max.overlaps", default = 10)
+        size = 2,
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 15)
       ) +
       geom_text_repel(
         data = down10,
@@ -1002,7 +1011,7 @@ for (i in allComparisons) {
         ),
         color = "navyblue",
         fontface = "italic",
-        size = 3,
+        size = 2,
         max.overlaps = getOption("ggrepel.max.overlaps", default = 5)
       ) +
       geom_text_repel(
@@ -1014,16 +1023,18 @@ for (i in allComparisons) {
         ),
         color = "navyblue",
         fontface = "italic",
-        size = 3,
-        max.overlaps = getOption("ggrepel.max.overlaps", default = 10)
-      )
-    p
+        size = 2,
+        max.overlaps = getOption("ggrepel.max.overlaps", default = 6)
+      ) +
+        scale_x_continuous(limits = c(-6.5, 6.5)) +
+        scale_y_continuous(limits = c(0, 8))
+    p   
     i <- gsub(" ", "_", i)
     # save
     path <-paste0("results_", projectID, "/sex_stratified/volcano/",i)
     pdf(paste0(path, "_male.pdf"),
-        height = 6,
-        width = 6)
+        height = 2.08,
+        width = 2.19)
     print(p)
     dev.off()
     
@@ -1193,8 +1204,8 @@ for (i in allComparisons) {
     # save
     path <-paste0("results_", projectID, "/sex_stratified/volcano/",i)
     pdf(paste0(path, "_female.pdf"),
-        height = 6,
-        width = 6)
+        height = 3,
+        width = 3)
     print(p)
     dev.off()
     
@@ -1352,8 +1363,8 @@ for (sex in sexes) {
         title_line3 = title_line3,
         x_lab = paste0("log2FC (", pretty_comp(comp1), ")"),
         y_lab = paste0("log2FC (", pretty_comp(comp2), ")"),
-        n_discordant = 5,
-        n_concordant_each = 3
+        n_discordant = 0,
+        n_concordant_each = 5
       )
     }
   }
